@@ -11,7 +11,7 @@
 /******************************************************************************/
 /* 头文件包含 */
 #include "HAL.h"
-
+#include "app_param.h"
 tmosTaskID halTaskID;
 
 /*******************************************************************************
@@ -92,7 +92,7 @@ void CH58X_BLEInit(void)
     cfg.BufMaxLen = (uint32_t)BLE_BUFF_MAX_LEN;
     cfg.BufNumber = (uint32_t)BLE_BUFF_NUM;
     cfg.TxNumEvent = (uint32_t)BLE_TX_NUM_EVENT;
-    cfg.TxPower = (uint32_t)BLE_TX_POWER;
+    cfg.TxPower = (uint32_t)sysparam.txPower;
 #if(defined(BLE_SNV)) && (BLE_SNV == TRUE)
     cfg.SNVAddr = (uint32_t)BLE_SNV_ADDR;
     cfg.readFlashCB = Lib_Read_Flash;

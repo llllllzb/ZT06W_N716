@@ -24,6 +24,7 @@ static uint8_t instructionid123[4];
 static uint16_t instructionserier = 0;
 static gpsRestore_s gpsres;
 static protocolInfo_s protocolInfo;
+static UndateInfoStruct uis;
 
 
 unsigned short createProtocolSerial(void);
@@ -49,6 +50,28 @@ static int createProtocolHead(char *dest, unsigned char Protocol_type)
     dest[pdu_len++] = Protocol_type;
     return pdu_len;
 }
+
+/**************************************************
+@bref       7979协议头
+@param
+@return
+@note
+**************************************************/
+
+static int createProtocolHead_7979(char *dest, unsigned char Protocol_type)
+{
+    int pdu_len = 0;
+
+    if(dest == 0)
+        return 0;
+    dest[pdu_len++] = 0x79;
+    dest[pdu_len++] = 0x79;
+    dest[pdu_len++] = 0;
+    dest[pdu_len++] = 0;
+    dest[pdu_len++] = Protocol_type;
+    return pdu_len;
+}
+
 /**************************************************
 @bref		7878协议尾
 @param
@@ -904,6 +927,161 @@ void createProtocolA0(char *DestBuf, uint16_t *len)
 
 
 /**************************************************
+@bref		生成0B协议
+@param
+@return
+@note
+**************************************************/
+
+int createProtocol0B(unsigned short Serial, char *DestBuf)
+{
+	int pdu_len;
+    int ret;
+    char mac[2][6];
+    uint8_t l, i, j;
+	pdu_len = createProtocolHead_7979(DestBuf, 0x0B);
+	/* 继电器MAC地址 */
+	DestBuf[pdu_len++] = 0x60;
+	DestBuf[pdu_len++] = sysparam.bleMacCnt * 6;
+	l = 5;
+	for (i = 0; i < 2; i++)
+	{
+	    for (j = 0; j < 3; j++)
+	    {
+	        tmos_memcpy(&mac[i][l], &sysparam.bleConnMac[i][j], 1);
+	        tmos_memcpy(&mac[i][j], &sysparam.bleConnMac[i][l], 1);
+	        l--;
+	    }
+	    l = 5;
+    }
+	for (uint8_t i = 0; i < sysparam.bleMacCnt; i++)
+	{
+		for (uint8_t j = 0; j < 6; j++)
+		{
+			DestBuf[pdu_len++] = mac[i][j];
+		}
+	}
+    pdu_len = createProtocolTail_7979(DestBuf, pdu_len,  Serial);
+    return pdu_len;
+}
+
+/**************************************************
+@bref		远程升级初始化
+@param
+@return
+@note
+**************************************************/
+
+void updateUISInit(uint8_t object)
+{
+    memset(&uis, 0, sizeof(UndateInfoStruct));
+    object = object > 0 ? 1 : 0;
+    uis.updateObject = object;
+    if (uis.updateObject)
+    {
+        uis.file_len = 244;
+        LogPrintf(DEBUG_UP, "Preparing to start the upgrade relay..");
+    }
+    else
+    {
+        memset(&uis, 0, sizeof(UndateInfoStruct));
+        LogPrintf(DEBUG_UP, "Unknow upgrade object");
+    }
+}
+
+/**************************************************
+@bref		更新当前版本
+@param
+@return
+@note
+**************************************************/
+
+void updateUISVersion(uint8_t *version)
+{
+	strncpy(uis.curCODEVERSION, version, 50);
+	LogPrintf(DEBUG_UP, "updateUISVersion==>current version[%s]", uis.curCODEVERSION);
+}
+
+/**************************************************
+@bref		生成远程升级协议
+@param
+@return
+@note
+**************************************************/
+
+static int createUpdateProtocol(char *IMEI, unsigned short Serial, char *dest, uint8_t cmd)
+{
+    int pdu_len = 0;
+    uint32_t readfilelen;
+    pdu_len = createProtocolHead_7979(dest, 0xF3);
+    //命令
+    dest[pdu_len++] = cmd;
+    if (cmd == 0x01)
+    {
+        //SN号长度
+        dest[pdu_len++] = strlen(IMEI);
+        //拷贝SN号
+        memcpy(dest + pdu_len, IMEI, strlen(IMEI));
+        pdu_len += strlen(IMEI);
+        //版本号长度
+        dest[pdu_len++] = strlen(uis.curCODEVERSION);
+        //拷贝SN号
+        memcpy(dest + pdu_len, uis.curCODEVERSION, strlen(uis.curCODEVERSION));
+        pdu_len += strlen(uis.curCODEVERSION);
+    }
+    else if (cmd == 0x02)
+    {
+        dest[pdu_len++] = (uis.file_id >> 24) & 0xFF;
+        dest[pdu_len++] = (uis.file_id >> 16) & 0xFF;
+        dest[pdu_len++] = (uis.file_id >> 8) & 0xFF;
+        dest[pdu_len++] = (uis.file_id) & 0xFF;
+
+        //文件偏移位置
+        dest[pdu_len++] = (uis.rxfileOffset >> 24) & 0xFF;
+        dest[pdu_len++] = (uis.rxfileOffset >> 16) & 0xFF;
+        dest[pdu_len++] = (uis.rxfileOffset >> 8) & 0xFF;
+        dest[pdu_len++] = (uis.rxfileOffset) & 0xFF;
+
+        readfilelen = uis.file_totalsize - uis.rxfileOffset; //得到剩余未接收大小
+        if (readfilelen > uis.file_len)
+        {
+            readfilelen = uis.file_len;
+        }
+        //文件读取长度
+        dest[pdu_len++] = (readfilelen >> 24) & 0xFF;
+        dest[pdu_len++] = (readfilelen >> 16) & 0xFF;
+        dest[pdu_len++] = (readfilelen >> 8) & 0xFF;
+        dest[pdu_len++] = (readfilelen) & 0xFF;
+    }
+    else if (cmd == 0x03)
+    {
+        dest[pdu_len++] = uis.updateOK;
+        //SN号长度
+        dest[pdu_len++] = strlen(IMEI);
+        //拷贝SN号
+        memcpy(dest + pdu_len, IMEI, strlen(IMEI));
+        pdu_len += strlen(IMEI);
+
+        dest[pdu_len++] = (uis.file_id >> 24) & 0xFF;
+        dest[pdu_len++] = (uis.file_id >> 16) & 0xFF;
+        dest[pdu_len++] = (uis.file_id >> 8) & 0xFF;
+        dest[pdu_len++] = (uis.file_id) & 0xFF;
+
+        //版本号长度
+        dest[pdu_len++] = strlen(uis.newCODEVERSION);
+        //拷贝SN号
+        memcpy(dest + pdu_len, uis.newCODEVERSION, strlen(uis.newCODEVERSION));
+        pdu_len += strlen(uis.newCODEVERSION);
+    }
+    else
+    {
+        return 0;
+    }
+    pdu_len = createProtocolTail_7979(dest, pdu_len, Serial);
+    return pdu_len;
+}
+
+/**************************************************
 @bref		生成序列号
 @param
 @return
@@ -981,6 +1159,49 @@ void gpsRestoreUpload(void)
 }
 
 /**************************************************
+@bref		修改定位包
+@param
+@return
+@note
+把历史已发送成功的定位包修改成现在的时间的定位包
+**************************************************/
+
+void updateHistoryGpsTime(gpsinfo_s *gpsinfo)
+{
+	uint16_t year;
+	uint8_t  month;
+	uint8_t day;
+	uint8_t hour;
+	uint8_t minute;
+	uint8_t second;
+	datetime_s datetimenew;
+	portGetRtcDateTime(&year, &month, &day, &hour, &minute, &second);
+	gpsinfo->datetime.year   = year % 100;
+	gpsinfo->datetime.month  = month;
+	gpsinfo->datetime.day    = day;
+	gpsinfo->datetime.hour   = hour;
+	gpsinfo->datetime.minute = minute;
+	gpsinfo->datetime.second = second;
+	gpsinfo->hadupload       = 0;
+	datetimenew = changeUTCTimeToLocalTime(gpsinfo->datetime, -sysparam.utc);
+	gpsinfo->datetime.year   = datetimenew.year % 100;
+	gpsinfo->datetime.month  = datetimenew.month;
+	gpsinfo->datetime.day    = datetimenew.day;
+	gpsinfo->datetime.hour   = datetimenew.hour;
+	gpsinfo->datetime.minute = datetimenew.minute;
+	gpsinfo->datetime.second = datetimenew.second;
+	LogPrintf(DEBUG_ALL, "gpsRequestSet==>Upload central poi [%02d/%02d/%02d-%02d/%02d/%02d]:lat:%.2f  lon:%.2f", 
+														    year % 100, 
+														    month,
+														    day,
+														    hour,
+														    minute,
+														    second,
+														    gpsinfo->latitude,
+														    gpsinfo->longtitude);
+}
+
+/**************************************************
 @bref		协议发送
 @param
 @return
@@ -1044,6 +1265,9 @@ void protocolSend(uint8_t link, PROTOCOLTYPE protocol, void *param)
         case PROTOCOL_F3:
             txlen = createProtocolF3(txdata, (WIFIINFO *)param);
             break;
+        case PROTOCOL_0B:
+			txlen = createProtocol0B(createProtocolSerial(), txdata);
+        	break;
         case PROTOCOL_61:
             recInfo = (recordUploadInfo_s *)param;
             txlen = createProtocol61(txdata, recInfo->dateTime, recInfo->totalSize, recInfo->fileType, recInfo->packSize);
@@ -1058,6 +1282,9 @@ void protocolSend(uint8_t link, PROTOCOLTYPE protocol, void *param)
             debugP = recInfo->dest;
             txlen = createProtocol62(recInfo->dest, recInfo->dateTime, recInfo->packNum, recInfo->recData, recInfo->recLen);
             break;
+       	case PROTOCOL_UP:
+			txlen = createUpdateProtocol((char *)dynamicParam.SN, createProtocolSerial(), txdata, *(uint8_t *)param);
+       		break;
         default:
             return;
             break;
@@ -1209,6 +1436,143 @@ void protoclParser16(uint8_t link, char *protocol, int size)
 }
 
 /**************************************************
+@bref		升级协议
+@param
+@return
+@note
+**************************************************/
+
+static void protocolParserUpdate(char *protocol, int size)
+{
+    uint8_t cmd, snlen, myversionlen, newversionlen;
+    uint16_t index, filecrc, calculatecrc;
+    uint32_t rxfileoffset, rxfilelen;
+    char *codedata;
+    ota_package_t ota_pack;
+    int ret;
+    cmd = protocol[5];
+    if (cmd == 0x01)
+    {
+        //判断是否有更新文件
+        if (protocol[6] == 0x01)
+        {
+            uis.file_id = (protocol[7] << 24 | protocol[8] << 16 | protocol[9] << 8 | protocol[10]);
+            uis.file_totalsize = (protocol[11] << 24 | protocol[12] << 16 | protocol[13] << 8 | protocol[14]);
+            snlen = protocol[15];
+            index = 16;
+            if (snlen > (sizeof(uis.rxsn) - 1))
+            {
+                LogPrintf(DEBUG_UP, "Sn too long %d", snlen);
+                return ;
+            }
+            strncpy(uis.rxsn, (char *)&protocol[index], snlen);
+            uis.rxsn[snlen] = 0;
+            index = 16 + snlen;
+            myversionlen = protocol[index];
+            index += 1;
+            if (myversionlen > (sizeof(uis.rxcurCODEVERSION) - 1))
+            {
+                LogPrintf(DEBUG_UP, "myversion too long %d", myversionlen);
+                return ;
+            }
+            strncpy(uis.rxcurCODEVERSION, (char *)&protocol[index], myversionlen);
+            uis.rxcurCODEVERSION[myversionlen] = 0;
+            index += myversionlen;
+            newversionlen = protocol[index];
+            index += 1;
+            if (newversionlen > (sizeof(uis.newCODEVERSION) - 1))
+            {
+                LogPrintf(DEBUG_UP, "newversion too long %d", newversionlen);
+                return ;
+            }
+            strncpy(uis.newCODEVERSION, (char *)&protocol[index], newversionlen);
+            uis.newCODEVERSION[newversionlen] = 0;
+            LogPrintf(DEBUG_UP, "File %08X , Total size=%d Bytes", uis.file_id, uis.file_totalsize);
+            LogPrintf(DEBUG_UP, "My SN:%s\nMy Ver:%s\nNew Ver:%s", uis.rxsn, uis.rxcurCODEVERSION, uis.newCODEVERSION);
+			
+            if (uis.rxfileOffset != 0)
+            {
+                LogMessage(DEBUG_UP, "Update firmware continute");
+                upgradeServerChangeFsm(NETWORK_DOWNLOAD_DOING);
+            }
+            else
+            {
+                ota_pack.len    = 0;
+                ota_pack.offset = 0;
+                /* 平台升级文件导入时必须按照格式命名版本号：BR0x_Vx.x */
+                index = my_getstrindex(uis.newCODEVERSION, "BR", newversionlen);
+                if (index >= 0)
+                {
+                    LogPrintf(DEBUG_UP, "Compare==>FileVer:BR[0%d]_V[%d.%d] currenVer:BR[0%d]_V[%d.%d]", 
+					                    uis.newCODEVERSION[index + 3], 
+					                    uis.newCODEVERSION[index + 6], 
+					                    uis.newCODEVERSION[index + 8], 
+					                    uis.curCODEVERSION[3],
+					                    uis.curCODEVERSION[6],
+					                    uis.curCODEVERSION[8]);
+                    if (uis.newCODEVERSION[index + 3] == uis.curCODEVERSION[3] &&
+                    	uis.newCODEVERSION[index + 6] == uis.curCODEVERSION[6] &&
+                    	uis.newCODEVERSION[index + 8] == uis.curCODEVERSION[8])
+                    {
+		                LogPrintf(DEBUG_UP, "File validation OK");
+                    	upgradeServerChangeFsm(NETWORK_MCU_START_UPGRADE);
+                    }
+                }
+                /* 如果BR头都找不到，退出升级 */
+                else
+                {
+                	LogPrintf(DEBUG_UP, "File validation fail, cancel relay upgrade");
+                    upgradeServerChangeFsm(NETWORK_DOWNLOAD_END);
+                }
+            }
+        }
+        else
+        {
+            LogMessage(DEBUG_UP, "No update file");
+            upgradeServerChangeFsm(NETWORK_DOWNLOAD_END);
+        }
+    }
+    else if (cmd == 0x02)
+    {
+        if (protocol[6] == 1)
+        {
+            rxfileoffset = (protocol[7] << 24 | protocol[8] << 16 | protocol[9] << 8 | protocol[10]); //文件偏移
+            rxfilelen = (protocol[11] << 24 | protocol[12] << 16 | protocol[13] << 8 | protocol[14]); //文件大小
+            calculatecrc = GetCrc16(protocol + 2, size - 6); //文件校验
+            filecrc = (*(protocol + 15 + rxfilelen + 2) << 8) | (*(protocol + 15 + rxfilelen + 2 + 1));
+            if (rxfileoffset < uis.rxfileOffset)
+            {
+                LogMessage(DEBUG_UP, "Receive the same firmware");
+                upgradeServerChangeFsm(NETWORK_DOWNLOAD_DOING);
+                return ;
+            }
+            if (calculatecrc == filecrc)
+            {
+                LogMessage(DEBUG_UP, "Data validation OK,Writting...");
+                codedata = protocol + 15;
+
+                ota_pack.offset = rxfileoffset;
+                ota_pack.len = rxfilelen;
+                ota_pack.data = (uint8_t *)codedata;
+                upgradeServerChangeFsm(NETWORK_FIRMWARE_WRITE_DOING);
+                //添加：把数据放入主机蓝牙发送区
+				
+            }
+            else
+            {
+                LogMessage(DEBUG_UP, "Data validation Fail");
+                upgradeServerChangeFsm(NETWORK_DOWNLOAD_DOING);
+            }
+        }
+        else
+        {
+            LogMessage(DEBUG_UP, "未知");
+        }
+    }
+}
+
+
+/**************************************************
 @bref		协议解析器
 @param
 @return
@@ -1237,6 +1601,13 @@ void protocolRxParser(uint8_t link, char *protocol, uint16_t size)
             	protoclParser16(link, protocol, size);
             	break;
         }
+    }
+    else if (protocol[0] == 0X79 && protocol[1] == 0X79)
+    {
+		switch ((uint8_t)protocol[3])
+		{
+			
+		}
     }
 }
 

@@ -23,7 +23,7 @@
 #define BOOT_PARAM_FLAG         0xB0
 #define	OTA_PARAM_FLAG			0x1A
 
-#define EEPROM_VERSION									"ZT06W_N716_ZKW_V1.0.0"
+#define EEPROM_VERSION									"ZT06W_N716_ZKW_V2.0.0"
 
 
 #define JT808_PROTOCOL_TYPE			8
@@ -73,6 +73,7 @@ typedef struct
     uint8_t hiddenServer[50];
     uint8_t jt808Server[50];
     uint8_t bleServer[50];
+    uint8_t upgradeServer[50];
 
     uint8_t bleAutoDisc;
     uint8_t bleRfThreshold;
@@ -97,6 +98,7 @@ typedef struct
     uint16_t hiddenPort;
     uint16_t ServerPort;
     uint16_t bleServerPort;
+    uint16_t upgradePort;
     uint16_t bleOutThreshold;
 
     float  adccal;
@@ -136,7 +138,10 @@ typedef struct
 	uint32_t alarmRequest;
 	uint8_t uncapalm;
 	uint8_t uncapLock;
-
+	uint8_t bleMacCnt;
+	uint8_t txPower;
+	uint8_t relayUpgrade[2];
+	
 } systemParam_s;
 
 /*存在EEPROM里的动态参数*/

@@ -12,6 +12,7 @@
 #define DEBUG_GPS				3
 #define DEBUG_FACTORY			4
 #define DEBUG_BLE				5
+#define DEBUG_UP				6
 #define DEBUG_ALL				9
 
 #define MODE1									1
@@ -33,6 +34,7 @@
 #define JT808_LINK				2
 #define HIDDEN_LINK				3
 #define AGPS_LINK				4
+#define UPGRADE_LINK			5
 
 typedef struct
 {
@@ -96,6 +98,7 @@ typedef struct
 
 	uint8_t moduleRstCnt;
 	uint8_t bleforceCmd;		/*由于断网会有断开继电器的逻辑，所以有些指令得强行主机发完再断开继电器*/
+	
 } SystemInfoTypedef;
 
 extern SystemInfoTypedef sysinfo;

@@ -56,6 +56,7 @@ UART_RXTX_CTL usart3_ctl = {0};
 static int8_t pushUartRxData(UART_RXTX_CTL *uartctl, uint8_t *buf, uint16_t len)
 {
     uint16_t spare, sparetoend;
+    uint8_t id = 5;
     if (uartctl->rxend > uartctl->rxbegin)
     {
         spare = uartctl->rxbufsize - (uartctl->rxend - uartctl->rxbegin);
@@ -70,7 +71,23 @@ static int8_t pushUartRxData(UART_RXTX_CTL *uartctl, uint8_t *buf, uint16_t len)
     }
     if (len > spare - 1)
     {
-        LogMessage(DEBUG_ALL, "pushUartRxData==>no space");
+    	if (uartctl == &usart0_ctl)
+    	{
+    		id = 0;
+    	}
+    	else if (uartctl == &usart1_ctl)
+    	{
+    		id = 1;
+    	}
+    	else if (uartctl == &usart2_ctl)
+    	{
+			id = 2;
+    	}
+    	else if (uartctl == &usart3_ctl)
+    	{
+			id = 3;
+    	}
+        LogPrintf(DEBUG_ALL, "pushUartRxData[%d]==>no space, begin:%d ~ end:%d, len:%d", id, uartctl->rxbegin, uartctl->rxend, len);
         return -1;
     }
 
@@ -549,7 +566,7 @@ void GPIOB_IRQHandler(void)
 void portModuleGpioCfg(void)
 {
     GPIOB_ModeCfg(POWER_PIN, GPIO_ModeOut_PP_5mA);
-    GPIOB_ModeCfg(RST_PIN, GPIO_ModeOut_PP_5mA);
+    GPIOB_ModeCfg(SUPPLY_PIN, GPIO_ModeOut_PP_5mA);
     GPIOA_ModeCfg(DTR_PIN, GPIO_ModeOut_PP_5mA);
     GPIOA_ModeCfg(RING_PIN, GPIO_ModeIN_PD);
     GPIOA_ITModeCfg(RING_PIN, GPIO_ITMode_RiseEdge);
@@ -601,7 +618,7 @@ void portLdrGpioCfg(void)
 void portAccGpioCfg(void)
 {
 	GPIOB_ModeCfg(ACC_PIN, GPIO_ModeIN_PU);
-	GPIOB_ModeCfg(RELAY_PIN, GPIO_ModeOut_PP_5mA);
+	GPIOA_ModeCfg(RELAY_PIN, GPIO_ModeOut_PP_5mA);
 	RELAY_OFF;
 }
 
@@ -638,12 +655,12 @@ void portGsensorPwrCtl(uint8 onoff)
     if (onoff)
     {
         GPIOB_ModeCfg(GSPWR_PIN, GPIO_ModeOut_PP_5mA);
-        GSPWR_OFF;
+        GSPWR_ON;
     }
     else
     {
-        GPIOB_ModeCfg(GSPWR_PIN, GPIO_ModeIN_Floating);
-        GSPWR_ON;
+        GPIOB_ModeCfg(GSPWR_PIN, GPIO_ModeOut_PP_5mA);
+        GSPWR_OFF;
     }
 }
 /**

@@ -110,7 +110,7 @@
 #define BLE_MEMHEAP_SIZE                    (1024*6)
 #endif
 #ifndef BLE_BUFF_MAX_LEN
-#define BLE_BUFF_MAX_LEN                    107
+#define BLE_BUFF_MAX_LEN                    251
 #endif
 #ifndef BLE_BUFF_NUM
 #define BLE_BUFF_NUM                        3
@@ -119,13 +119,13 @@
 #define BLE_TX_NUM_EVENT                    1
 #endif
 #ifndef BLE_TX_POWER
-#define BLE_TX_POWER                        LL_TX_POWEER_0_DBM
+#define BLE_TX_POWER                        LL_TX_POWEER_5_DBM
 #endif
 #ifndef PERIPHERAL_MAX_CONNECTION
 #define PERIPHERAL_MAX_CONNECTION           1
 #endif
 #ifndef CENTRAL_MAX_CONNECTION
-#define CENTRAL_MAX_CONNECTION              2
+#define CENTRAL_MAX_CONNECTION              3
 #endif
 
 extern uint32_t MEM_BUF[BLE_MEMHEAP_SIZE / 4];

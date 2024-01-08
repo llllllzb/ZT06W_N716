@@ -2,7 +2,7 @@
 #define APPSERVERPROTOCOL
 
 #include <stdint.h>
-
+#include "app_gps.h"
 
 #define WIFIINFOMAX		10
 typedef enum{
@@ -18,8 +18,30 @@ typedef enum{
 	PROTOCOL_F3,
 	PROTOCOL_8A,
 	PROTOCOL_A0,
+	PROTOCOL_0B,
+	PROTOCOL_UP,
 }PROTOCOLTYPE;
 
+typedef struct
+{
+    char curCODEVERSION[50];
+    char newCODEVERSION[50];
+    char rxsn[50];
+    char rxcurCODEVERSION[50];
+    uint8_t updateOK;
+	uint8_t updateObject;
+    uint32_t file_id;
+    uint32_t file_offset;
+    uint32_t file_len;
+    uint32_t file_totalsize;
+    uint32_t rxfileOffset;//已接收文件长度
+} UndateInfoStruct;
+
+typedef struct _ota_package {
+    unsigned int offset;
+    unsigned int len;
+    unsigned char *data;
+} ota_package_t;
 
 
 //总过17个字节，存储20个字节
@@ -86,9 +108,12 @@ void setLastInsid(void);
 void createProtocolA0(char *DestBuf, uint16_t *len);
 
 
+void updateUISInit(uint8_t object);
+void updateUISVersion(uint8_t *version);
 
 void gpsRestoreUpload(void);
 
+void updateHistoryGpsTime(gpsinfo_s *gpsinfo);
 
 void protocolSnRegister(char *sn);
 void protocolInfoResiter(uint8_t batLevel, float vol, uint16_t sCnt, uint16_t runCnt);

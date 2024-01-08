@@ -247,7 +247,7 @@ void outputNode(void)
             }
             else if (currentnode->currentcmd == WIFIAPSCAN_CMD)
             {
-				tickRange = 75;
+				tickRange = 10;
             }
             else
             {
@@ -373,18 +373,49 @@ void modulePowerOn(void)
     
     socketDelAll();
 }
+
 /**************************************************
-@bref		ÊÍ·Å¹Ø»ú°´¼ü
+@bref		¹Ø»úÍê³É
 @param
 @return
 @note
 **************************************************/
-static void modulePowerOffProcess(void)
+static void modulePowerOffFinish(void)
 {
-    PWRKEY_HIGH;
-    RSTKEY_HIGH;
-    LogMessage(DEBUG_ALL, "modulePowerOff Done");
+	POWER_OFF;
+	LogMessage(DEBUG_ALL, "modulePowerOffFinish");
 }
+
+
+/**************************************************
+@bref		¹Ø»ú¼üÊÍ·Å
+@param
+@return
+@note
+**************************************************/
+
+static void modulePowerOffRelease(void)
+{
+	PWRKEY_HIGH;
+    startTimer(60, modulePowerOffFinish, 0);
+    LogMessage(DEBUG_ALL, "modulePowerOffRelease");
+}
+
+
+/**************************************************
+@bref		¹Ø»ú¼ü°´ÏÂ
+@param
+@return
+@note
+**************************************************/
+
+static void modulePowerOffPress(void)
+{
+    PWRKEY_LOW;
+    startTimer(25, modulePowerOffRelease, 0);
+    LogMessage(DEBUG_ALL, "modulePowerOffPress");
+}
+
 /**************************************************
 @bref		Ä£×é¹Ø»ú
 @param
@@ -397,26 +428,14 @@ void modulePowerOff(void)
     LogMessage(DEBUG_ALL, "modulePowerOff");
     moduleInit();
     portUartCfg(APPUSART3, 0, 115200, NULL);
-    POWER_OFF;
+    PWRKEY_HIGH;
     RSTKEY_HIGH;
-    PWRKEY_LOW;
-    startTimer(25, modulePowerOffProcess, 0);
+    startTimer(6, modulePowerOffPress, 0);
     sysinfo.moduleRstFlag = 1;
     socketDelAll();
 }
 
-/**************************************************
-@bref		ÊÍ·Å¸´Î»°´¼ü
-@param
-@return
-@note
-**************************************************/
 
-static void moduleReleaseRstkey(void)
-{
-    moduleState.powerState = 1;
-    RSTKEY_HIGH;
-}
 /**************************************************
 @bref		Ä£×é¸´Î»
 @param
@@ -428,8 +447,8 @@ void moduleReset(void)
 {
     LogMessage(DEBUG_ALL, "moduleReset");
     moduleInit();
-    RSTKEY_LOW;
-    startTimer(10, moduleReleaseRstkey, 0);
+    modulePowerOff();
+    startTimer(120, modulePowerOn, 0);
     socketDelAll();
 }
 
@@ -1208,8 +1227,13 @@ static void tcprecvParser(uint8_t *buf, uint16_t len)
 @param
 @return
 @note
-+TCPREAD:0,10,1234567890
++TCPREAD: 0,46,xx\0ÙÜ
+xxñ\0v?
+xx?
+;\0P?
+xx‹\0àn
 
++TCPREAD: 0,0
 
 **************************************************/
 
@@ -1223,8 +1247,7 @@ static void tcpreadParser(uint8_t *buf, uint16_t len)
 	rebuf = buf;
 	relen = len;
 	index = my_getstrindex(rebuf, "+TCPREAD:", relen);
-	if (index < 0)
-		return;
+
 	while (index >= 0)
 	{
 		rebuf += index + 9;
@@ -1238,6 +1261,7 @@ static void tcpreadParser(uint8_t *buf, uint16_t len)
 		rebuf += index + 1;
 		relen -= index + 1;
 		index = getCharIndex(rebuf, relen, ',');
+		//+TCPREAD: 0,0
 		if (index < 0)
 		{
 			index = getCharIndex(rebuf, relen, '\r');
@@ -1247,34 +1271,54 @@ static void tcpreadParser(uint8_t *buf, uint16_t len)
 			memcpy(restore, rebuf, index);
 			restore[index] = 0;
 			recvlen = atoi(restore);
-			LogPrintf(DEBUG_ALL, "Socket [%d] Recv %d bytes", sockId, recvlen);
+			
 		}
 		if (recvlen != 0)
 		{
 			rebuf += index + 1;
 			relen -= index + 1;
+			/* 
+				Ä£×é¿ÉÄÜ»á·µ»Ø±È²¥±¨¶ÌµÄÊý¾Ý»ØÀ´£¬Èç£º
+				+TCPREAD: 0,46,xx\0\0ÈU
+				xxñ\0gs
+				Êµ¼ÊÓ¦¸Ã·µ»Ø£º
+				+TCPREAD: 0,46,xx\0ÙÜ
+				xxñ\0v?
+				xx?
+				;\0P?
+				xx‹\0àn
+				ÉÙÁËÁ½ÌõÊý¾Ý£¬relen -= recvlen;»áµ¼ÖÂrelen²»¹»¼õ,È¥µ½60000+
+				ËùÒÔÕâÀïÒªÇó³öÊµ¼ÊÊ£ÓàµÄ³¤¶È
+			*/
+			char debug[257] = { 0 };
+			recvlen = relen >= recvlen ? recvlen : relen;
 			socketRecv(sockId, rebuf, recvlen);
-			rebuf += recvlen;
-			relen -= recvlen;
+			recvlen = recvlen > 128 ? 128 : recvlen;
+			byteToHexString(rebuf, debug, recvlen);
+			debug[recvlen * 2] = 0;
+			LogPrintf(DEBUG_ALL, "Socket [%d] Recv %d bytes:", sockId, recvlen);
+			LogMessageWL(DEBUG_ALL, debug, recvlen * 2);
+			rebuf += index;
+			relen -= index;
 		}
 		else 
 		{
-			switch(sockId)
+			switch (sockId)
 			{
 				case NORMAL_LINK:
 					moduleState.normalLinkQird = 0;
 					break;
 				case BLE_LINK:
-					moduleState.bleLinkQird = 0;
+					moduleState.bleLinkQird    = 0;
 					break;
 				case JT808_LINK:
-					moduleState.jt808LinkQird = 0;
+					moduleState.jt808LinkQird  = 0;
 					break;
 				case HIDDEN_LINK:
-					moduleState.hideLinkQird = 0;
+					moduleState.hideLinkQird   = 0;
 					break;
 				case AGPS_LINK:
-					moduleState.agpsLinkQird = 0;
+					moduleState.agpsLinkQird   = 0;
 					break;
 			}
 			LogPrintf(DEBUG_ALL, "Socket [%d] Recv done", sockId);
@@ -1465,26 +1509,22 @@ static void qisendParser(uint8_t *buf, uint16_t len)
 
 
 /**************************************************
-@bref		QWIFISCAN	Ö¸Áî½âÎö
+@bref		WIFIAPSCAN	Ö¸Áî½âÎö
 @param
 @return
 @note
-+WIFISCAN: "50:0f:f5:51:1a:eb",-31,3
-+WIFISCAN: "dc:9f:db:1c:1d:76",-50,11
-+WIFISCAN: "ec:41:18:0c:82:09",-63,4
-+WIFISCAN: "40:22:30:1a:f8:01",-67,1
-+WIFISCAN: "08:6b:d1:0b:50:60",-68,11
-+WIFISCAN: "14:09:b4:95:94:6d",-72,6
-+WIFISCAN: "f8:8c:21:a2:c6:e9",-74,11
-+WIFISCAN: "70:3a:73:05:79:1c",-90,13
-+WIFISCAN: "2c:9c:6e:28:f5:0e",-91,1
-+WIFISCAN: "7c:a7:b0:61:db:14",-92,11
++WIFIAPSCAN: ec41180c8209,-45,8
++WIFIAPSCAN: f88c21a2c6e9,-70,4
++WIFIAPSCAN: 4022301af801,-66,9
++WIFIAPSCAN: dc9fdb1c1d76,-65,11
++WIFIAPSCAN: 086bd10b5060,-73,11
++WIFIAPSCAN: 500ff5511aeb,-57,13
++WIFIAPSCAN: accb51ae14e1,-71,7
+
 
 OK
-
-
 **************************************************/
-static void wifiscanParser(uint8_t *buf, uint16_t len)
+static void wifiapscanParser(uint8_t *buf, uint16_t len)
 {
     int index;
     uint8_t *rebuf, i;
@@ -1493,18 +1533,18 @@ static void wifiscanParser(uint8_t *buf, uint16_t len)
     WIFIINFO wifiList;
     rebuf = buf;
     relen = len;
-    index = my_getstrindex((char *)rebuf, "+WIFISCAN:", relen);
+    index = my_getstrindex((char *)rebuf, "+WIFIAPSCAN:", relen);
     wifiList.apcount = 0;
     while (index >= 0)
     {
-        rebuf += index + 12;
-        relen -= index + 12;
+        rebuf += index + 13;
+        relen -= index + 13;
 
-        index = getCharIndex(rebuf, relen, '"');
-        if (index == 17 && wifiList.apcount < WIFIINFOMAX)
+        index = getCharIndex(rebuf, relen, ',');
+        if (index == 12 && wifiList.apcount < WIFIINFOMAX)
         {
             memcpy(restore, rebuf, index);
-            restore[17] = 0;
+            restore[12] = 0;
             LogPrintf(DEBUG_ALL, "WIFI:[%s]", restore);
 
             wifiList.ap[wifiList.apcount].signal = 0;
@@ -1518,7 +1558,7 @@ static void wifiscanParser(uint8_t *buf, uint16_t len)
         rebuf += index;
         relen -= index;
 
-        index = my_getstrindex((char *)rebuf, "+WIFISCAN:", relen);
+        index = my_getstrindex((char *)rebuf, "+WIFIAPSCAN:", relen);
     }
 	if (wifiList.apcount != 0)
     {
@@ -1956,23 +1996,20 @@ static void tcpcloseParser(uint8_t *buf, uint16_t len)
 	rebuf += index + 11;
 	relen -= index + 11;
 	index = getCharIndex(rebuf, relen, ',');
-	if (index >= 3)
-	{
+	if (index >= 3)	
 		return;
-	}
 	memcpy(restore, rebuf, index);
 	restore[index] = 0;
 	sockId = atoi(restore);
 	rebuf += index + 1;
 	relen -= index + 1;
 	index = getCharIndex(rebuf, relen, '\r');
-	if (index < 0 || index >= 20)
-	{
+	LogPrintf(DEBUG_ALL, "index:%d", index);
+	if (index < 0 || index > 20)
 		return;
-	}
 	memcpy(restore, rebuf, index);
 	restore[index] = 0;
-	if (my_getstrindex(rebuf, "Link Closed", index))
+	if (my_strstr(rebuf, "Link Closed", index))
 	{
 		LogPrintf(DEBUG_ALL, "Socket [%d] is close", sockId);
 		socketSetConnState(sockId, SOCKET_CONN_ERR);
@@ -1986,7 +2023,6 @@ static void tcpcloseParser(uint8_t *buf, uint16_t len)
 			}
 		}
 	}
-	
 }
 
 uint8_t isAgpsDataRecvComplete(void)
@@ -2001,6 +2037,7 @@ uint8_t isAgpsDataRecvComplete(void)
 @return
 @note
 +TCPACK: 0,20,20
++TCPACK: 0,DISCONNECT
 
 **************************************************/
 
@@ -2060,7 +2097,8 @@ void tcpackParser(uint8_t *buf, uint16_t len)
 
 void tcpsendParser(uint8_t *buf, uint16_t len)
 {
-	if (my_strstr((char *)buf, "ERROR", len) || my_strstr((char *)buf, "+TCPSEND: SOCKET ID OPEN FAILED", len))
+	if (my_strstr((char *)buf, "ERROR", len) || 
+		my_strstr((char *)buf, "+TCPSEND: SOCKET ID OPEN FAILED", len))
     {
 		if (sysparam.protocol == JT808_PROTOCOL_TYPE)
 		{
@@ -2360,7 +2398,7 @@ void moduleRecvParser(uint8_t *buf, uint16_t bufsize)
     cmtiParser(dataRestore, len);
     cmgrParser(dataRestore, len);
     tcpsetupRspParser(dataRestore, len);
-    wifiscanParser(dataRestore, len);
+    wifiapscanParser(dataRestore, len);
     mylacidParser(dataRestore, len);
     netdmsgParser(dataRestore, len);
     tcprecvParser(dataRestore, len);

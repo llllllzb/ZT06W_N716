@@ -18,6 +18,28 @@ typedef enum
     
     SERV_END,
 } NetWorkFsmState;
+
+typedef enum
+{
+    NETWORK_LOGIN,
+    NETWORK_LOGIN_WAIT,
+    NETWORK_LOGIN_READY,
+
+
+    NETWORK_DOWNLOAD_DOING,
+    NETWORK_DOWNLOAD_WAIT,
+    
+	NETWORK_MCU_START_UPGRADE,
+	NETWORK_MCU_EARSE,
+    NETWORK_FIRMWARE_WRITE_DOING,
+
+    NETWORK_DOWNLOAD_DONE,
+    NETWORK_UPGRAD_NOW,
+    NETWORK_DOWNLOAD_ERROR,
+    NETWORK_WAIT_JUMP,
+    NETWORK_DOWNLOAD_END
+} UpgradeFsmState;
+
 typedef struct
 {
     NetWorkFsmState fsmstate;
@@ -43,8 +65,6 @@ typedef enum
     JT808_NORMAL,
 } jt808_connfsm_s;
 
-
-
 typedef struct
 {
     jt808_connfsm_s connectFsm;
@@ -53,6 +73,16 @@ typedef struct
     uint8_t authCnt;
     uint16_t hbtTick;
 } jt808_Connect_s;
+
+typedef struct
+{
+	UpgradeFsmState fsm;
+	uint8_t 		logintick;
+	uint8_t 		loginCount;
+	uint8_t         getVerCount;
+	uint8_t 		runTick;
+	
+}upgrade_Connect_s;
 
 void moduleRspSuccess(void);
 void hbtRspSuccess(void);
@@ -75,6 +105,7 @@ void bleSerLoginReady(void);
 
 void agpsRequestSet(void);
 void agpsRequestClear(void);
+void upgradeServerChangeFsm(UpgradeFsmState state);
 
 uint8_t primaryServerIsReady(void);
 uint8_t hiddenServerIsReady(void);

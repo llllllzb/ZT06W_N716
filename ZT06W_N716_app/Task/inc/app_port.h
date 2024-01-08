@@ -14,17 +14,17 @@
 
 
 //4G模组涉及IO
-#define SUPPLY_PIN      
-#define PORT_SUPPLY_ON  
-#define PORT_SUPPLY_OFF 
+#define SUPPLY_PIN      GPIO_Pin_10
+#define PORT_SUPPLY_ON  GPIOB_SetBits(SUPPLY_PIN)
+#define PORT_SUPPLY_OFF GPIOB_ResetBits(SUPPLY_PIN)
 
 #define POWER_PIN    	GPIO_Pin_11	//PB11
 #define PORT_PWRKEY_H   GPIOB_ResetBits(POWER_PIN)
 #define PORT_PWRKEY_L   GPIOB_SetBits(POWER_PIN)
 
-#define RST_PIN			GPIO_Pin_10	//PB10
-#define PORT_RSTKEY_H	GPIOB_ResetBits(RST_PIN)
-#define PORT_RSTKEY_L	GPIOB_SetBits(RST_PIN)
+#define RST_PIN			
+#define PORT_RSTKEY_H	
+#define PORT_RSTKEY_L	
 
 
 #define RING_PIN		GPIO_Pin_14	//PA14
@@ -70,9 +70,9 @@
 #define ACC_PIN			GPIO_Pin_22	//PB22
 #define ACC_PORT_READ	(GPIOB_ReadPortPin(ACC_PIN) ? 1 : 0)
 //RELAY	涉及IO
-#define RELAY_PIN		GPIO_Pin_23 //PB23
-#define RELAY_ON		GPIOB_SetBits(RELAY_PIN)
-#define RELAY_OFF		GPIOB_ResetBits(RELAY_PIN)
+#define RELAY_PIN		GPIO_Pin_10 //PA10
+#define RELAY_ON		GPIOA_SetBits(RELAY_PIN)
+#define RELAY_OFF		GPIOA_ResetBits(RELAY_PIN)
 
 #define VCARD_ADCPIN	GPIO_Pin_9
 #define VCARD_CHANNEL	CH_EXTIN_13

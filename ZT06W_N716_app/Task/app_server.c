@@ -18,6 +18,7 @@
 
 static netConnectInfo_s privateServConn, bleServConn, hiddenServConn;
 static jt808_Connect_s jt808ServConn;
+static upgrade_Connect_s upgradeServConn;
 static bleInfo_s *bleHead = NULL;
 static int8_t timeOutId = -1;
 static int8_t hbtTimeOutId = -1;
@@ -254,12 +255,12 @@ void privateServerConnTask(void)
                 LogMessage(DEBUG_ALL, "no Sn");
                 return;
             }
-
             LogMessage(DEBUG_ALL, "Login to server...");
             protocolSnRegister(dynamicParam.SN);
             protocolSend(NORMAL_LINK, PROTOCOL_01, NULL);
             protocolSend(NORMAL_LINK, PROTOCOL_F1, NULL);
             protocolSend(NORMAL_LINK, PROTOCOL_8A, NULL);
+            protocolSend(NORMAL_LINK, PROTOCOL_0B, NULL);
             privateServerChangeFsm(SERV_LOGIN_WAIT);
             privateServConn.logintick = 0;
             break;
@@ -1084,7 +1085,116 @@ static void agpsServerConnTask(void)
             break;
     }
 
+}
 
+
+
+/**************************************************
+@bref		继电器远程状态切换
+@param
+@return
+@note
+**************************************************/
+
+void upgradeServerChangeFsm(UpgradeFsmState state)
+{
+	upgradeServConn.fsm     = state;
+	upgradeServConn.runTick = 0;
+}
+
+/**************************************************
+@bref		继电器远程升级
+@param
+@return
+@note
+**************************************************/
+
+static void upgradeServerConnTask(void)
+{
+	uint8_t cmd;
+	
+	switch (upgradeServConn.fsm)
+	{
+		/* 登录 */
+		case NETWORK_LOGIN:
+			protocolSend(UPGRADE_LINK, PROTOCOL_01, NULL);
+			upgradeServConn.logintick = 0;
+			upgradeServConn.loginCount++;
+			upgradeServerChangeFsm(NETWORK_LOGIN_WAIT);
+			break;
+		/* 登录等待 */
+		case NETWORK_LOGIN_WAIT:
+			if (upgradeServConn.logintick++ >= 45)
+			{
+				if (upgradeServConn.loginCount > 3)
+				{
+					upgradeServConn.loginCount = 0;
+					LogMessage(DEBUG_UP, "Upgrade server login fail,cancel relay upgrade");
+					upgradeServerChangeFsm(NETWORK_DOWNLOAD_END);
+				}
+			}
+			break;
+		/* 登录后获取新软件版本，未获取，每隔30秒重新获取 */
+		/* 超过3次失败，可能是平台的软件错误，可能是获取不到当前继电器的软件，均退出升级 */
+		case NETWORK_LOGIN_READY:
+			if (upgradeServConn.runTick++ % 30 == 0)
+			{
+				cmd = 1;
+				LogMessage(DEBUG_UP, "Get version");
+				protocolSend(UPGRADE_LINK, PROTOCOL_UP, &cmd);
+				upgradeServConn.getVerCount++;
+				if (upgradeServConn.getVerCount > 3)
+				{
+					upgradeServConn.getVerCount = 0;
+					LogMessage(DEBUG_UP, "Get version fail,cancel relay upgrade");
+					upgradeServerChangeFsm(NETWORK_DOWNLOAD_END);
+				}
+			}
+			
+			break;
+		/* 发送下载协议,并进入等待状态 */
+		case NETWORK_DOWNLOAD_DOING:
+            upgradeServConn.getVerCount = 0;
+            cmd = 2;
+            protocolSend(UPGRADE_LINK, PROTOCOL_UP, &cmd);
+            upgradeServerChangeFsm(NETWORK_DOWNLOAD_WAIT);
+            break;
+        /* 等下固件下载，超过20秒未收到数据，重新发送下载协议 */
+        case NETWORK_DOWNLOAD_WAIT:
+			LogPrintf(DEBUG_UP, "Waitting firmware data...[%d]", upgradeServConn.runTick);
+            if (upgradeServConn.runTick++ > 20)
+            {
+                upgradeServerChangeFsm(NETWORK_DOWNLOAD_DOING);
+            }
+        	break;
+        /* 等待继电器返回软件版本号 */
+        case NETWORK_MCU_START_UPGRADE:
+			
+        	break;
+        case NETWORK_MCU_EARSE:
+			LogMessage(DEBUG_UP, "Mcu earse");
+			
+        	upgradeServerChangeFsm(NETWORK_DOWNLOAD_DOING);
+        	break;
+        case NETWORK_FIRMWARE_WRITE_DOING:
+			
+        	break;
+        case NETWORK_DOWNLOAD_DONE:
+
+        	break;
+        case NETWORK_UPGRAD_NOW:
+
+        	break;
+        case NETWORK_DOWNLOAD_ERROR:
+
+        	break;
+        case NETWORK_WAIT_JUMP:
+
+        	break;
+        case NETWORK_DOWNLOAD_END:
+            
+            break;
+	}
 }
 
 /**************************************************

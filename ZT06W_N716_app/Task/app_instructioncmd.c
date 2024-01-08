@@ -68,6 +68,9 @@ const instruction_s insCmdTable[] =
 	{UNCAPALM_INS, "UNCAPALM"},
 	{SIMPULLOUTALM_INS, "SIMPULLOUTALM"},
 	{SIMSEL_INS, "SIMSEL"},
+	{READVERSION_INS, "READVERSION"},
+	{SETTXPOWER_INS, "SETTXPOWER"},
+	{BLEUPS_INS, "BLEUPS"},
     {SN_INS, "*"},
 };
 
@@ -232,6 +235,7 @@ static void doParamInstruction(ITEM *item, char *message)
 static void doStatusInstruction(ITEM *item, char *message)
 {
     gpsinfo_s *gpsinfo;
+    uint8_t i;
     moduleGetCsq();
     sprintf(message, "OUT-V=%.2fV;", sysinfo.outsidevoltage);
     //sprintf(message + strlen(message), "BAT-V=%.2fV;", sysinfo.insidevoltage);
@@ -650,7 +654,8 @@ void doUPSInstruction(ITEM *item, char *message)
 {
     if (item->item_cnt >= 3)
     {
-        strcpy((char *)bootparam.updateServer, item->item_data[1]);
+        strncpy((char *)bootparam.updateServer, item->item_data[1], 50);
+        bootparam.updateServer[49] = 0;
         bootparam.updatePort = atoi(item->item_data[2]);
         bootParamSaveAll();
     }
@@ -658,11 +663,16 @@ void doUPSInstruction(ITEM *item, char *message)
     sprintf(message, "The device will download the firmware from %s:%d in 6 seconds", bootparam.updateServer,
             bootparam.updatePort);
     bootparam.updateStatus = 1;
-    strcpy(bootparam.SN, dynamicParam.SN);
-    strcpy(bootparam.apn, sysparam.apn);
-    strcpy(bootparam.apnuser, sysparam.apnuser);
-    strcpy(bootparam.apnpassword, sysparam.apnpassword);
-    strcpy(bootparam.codeVersion, EEPROM_VERSION);
+    strncpy(bootparam.SN, dynamicParam.SN, 20);
+    bootparam.SN[19] = 0;
+    strncpy(bootparam.apn, sysparam.apn, 50);
+    bootparam.apn[49] = 0;
+    strncpy(bootparam.apnuser, sysparam.apnuser, 50);
+    bootparam.apnuser[49] = 0;
+    strncpy(bootparam.apnpassword, sysparam.apnpassword, 50);
+    bootparam.apnpassword[49] = 0;
+    strncpy(bootparam.codeVersion, EEPROM_VERSION, 50);
+    bootparam.codeVersion[49] = 0;
     bootParamSaveAll();
     startTimer(30, modulePowerOff, 0);
     startTimer(60, portSysReset, 0);
@@ -1081,6 +1091,7 @@ static void doRelayInstrucion(ITEM *item, char *message, insMode_e mode, void *p
         paramSaveAll();
         bleRelaySetAllReq(BLE_EVENT_SET_DEVOFF | BLE_EVENT_CLR_CNT);
         bleRelayClearAllReq(BLE_EVENT_SET_DEVON);
+        relayAutoClear();
         sysinfo.bleforceCmd = bleDevGetCnt();
         if (rspTimeOut == -1)
         {
@@ -1100,15 +1111,19 @@ static void doReadParamInstruction(ITEM *item, char *message)
 {
     uint8_t i, cnt;
     bleRelayInfo_s *bleinfo;
+    deviceConnInfo_s *devinfo;
     cnt = 0;
+    bleDevReadAllRssi();
     for (i = 0; i < BLE_CONNECT_LIST_SIZE; i++)
     {
         bleinfo = bleRelayGeInfo(i);
+        
         if (bleinfo != NULL)
         {
             cnt++;
-            sprintf(message + strlen(message), "[T:%ld,V:(%.2fV,%.2fV)] ", sysinfo.sysTick - bleinfo->updateTick, bleinfo->rfV,
-                    bleinfo->outV);
+            devinfo = bleDevGetInfoById(i); 
+            sprintf(message + strlen(message), "[T:%ld,V:(%.2fV,%.2fV),RSSI:%d] ", sysinfo.sysTick - bleinfo->updateTick, bleinfo->rfV,
+                    bleinfo->outV, devinfo->rssi);
         }
     }
     if (cnt == 0)
@@ -1116,6 +1131,7 @@ static void doReadParamInstruction(ITEM *item, char *message)
         sprintf(message, "no ble info");
     }
 }
+
 static void doSetBleParamInstruction(ITEM *item, char *message)
 {
     uint8_t i, cnt;
@@ -1222,6 +1238,15 @@ static void doSetBleWarnParamInstruction(ITEM *item, char *message)
     }
 }
 
+static void setBleMacCallback(void)
+{
+	for (uint8_t ind = 0; ind < sysparam.bleMacCnt; ind++)
+	{
+		bleRelayInsert(sysparam.bleConnMac[ind], 0);
+		//如果调用断连指令10秒后协议栈还未返回断连回调函数，强行改回连接状态
+	}
+}
+
 static void doSetBleMacInstruction(ITEM *item, char *message)
 {
     uint8_t i, j, l, ind;
@@ -1244,7 +1269,6 @@ static void doSetBleMacInstruction(ITEM *item, char *message)
                 l--;
             }
             sprintf(message + strlen(message), " %s", mac);
-
         }
         strcat(message, ";");
     }
@@ -1260,14 +1284,6 @@ static void doSetBleMacInstruction(ITEM *item, char *message)
             {
                 continue;
             }
-            //aa bb cc dd ee ff
-            //ff ee dd cc bb aa
-//            if (ind < 2)
-//            {
-//                changeHexStringToByteArray(sysparam.bleConnMac[ind], item->item_data[i], 6);
-//                bleRelayInsert(sysparam.bleConnMac[ind], 0);
-//                ind++;
-//            }
 
             l = 0;
             for (j = 0; j < 12; j += 2)
@@ -1293,17 +1309,24 @@ static void doSetBleMacInstruction(ITEM *item, char *message)
             if (ind < 2)
             {
                 changeHexStringToByteArray(sysparam.bleConnMac[ind], item->item_data[i], 6);
-                bleRelayInsert(sysparam.bleConnMac[ind], 0);
+                //bleRelayInsert(sysparam.bleConnMac[ind], 0);
                 ind++;
             }
         }
-        paramSaveAll();
         if (ind == 0)
         {
             strcpy(message, "Disable the ble function,and the ble mac was clear");
         }
+        sysparam.bleMacCnt = ind;
+        //startTimer(100, setBleMacCallback, 0);
+        paramSaveAll();
+        if (primaryServerIsReady() && sysparam.protocol != JT808_PROTOCOL_TYPE)
+        {
+			protocolSend(NORMAL_LINK, PROTOCOL_0B, NULL);
+        }
     }
 }
+
 
 static void doRelaySpeedInstruction(ITEM *item, char *message)
 {
@@ -1842,6 +1865,160 @@ static void doSimPullOutAlmInstrucion(ITEM *item, char *message)
     }
 }
 
+static void doReadVersionInstruction(ITEM *item, char *message)
+{
+	uint8_t i, cnt;
+	uint8_t ver;
+    bleRelayInfo_s *bleinfo;
+    cnt = 0;
+    bleRelaySetAllReq(BLE_EVENT_VERSION);
+    for (i = 0; i < BLE_CONNECT_LIST_SIZE; i++)
+    {
+        bleinfo = bleRelayGeInfo(i);
+        if (bleinfo != NULL)
+        {
+            cnt++;
+            
+            sprintf(message + strlen(message), "Dev(%d) version:%s; ", i, bleinfo->version);
+        }
+    }
+    if (cnt == 0)
+    {
+        sprintf(message, "no ble info");
+    }
+}
+
+static void doSetTxPowerInstruction(ITEM *item, char *message)
+{
+	uint8_t db;
+	if (item->item_data[1][0] == 0 || item->item_data[1][0] == '?')
+	{
+		switch (sysparam.txPower)
+        {
+            case LL_TX_POWEER_0_DBM:
+                db = APP_TX_POWEER_0_DBM;
+                break;
+            case LL_TX_POWEER_1_DBM:
+                db = APP_TX_POWEER_1_DBM;
+                break;
+            case LL_TX_POWEER_2_DBM:
+                db = APP_TX_POWEER_2_DBM;
+                break;
+            case LL_TX_POWEER_3_DBM:
+                db = APP_TX_POWEER_3_DBM;
+                break;
+            case LL_TX_POWEER_4_DBM:
+                db = APP_TX_POWEER_4_DBM;
+                break;
+            case LL_TX_POWEER_5_DBM:
+                db = APP_TX_POWEER_5_DBM;
+                break;
+            case LL_TX_POWEER_6_DBM:
+            	db = APP_TX_POWEER_6_DBM;
+            	break;
+            default:
+               	db = APP_TX_POWEER_6_DBM;
+                break;
+        }
+        sprintf(message, "Ble tx power is %d DB[0x%02x]", db, sysparam.txPower);
+    }
+    else
+    {
+		db = atoi(item->item_data[1]);
+		switch (db)
+        {
+            case APP_TX_POWEER_0_DBM:
+                sysparam.txPower = LL_TX_POWEER_0_DBM;
+                break;
+            case APP_TX_POWEER_1_DBM:
+                sysparam.txPower = LL_TX_POWEER_1_DBM;
+                break;
+            case APP_TX_POWEER_2_DBM:
+                sysparam.txPower = LL_TX_POWEER_2_DBM;
+                break;
+            case APP_TX_POWEER_3_DBM:
+                sysparam.txPower = LL_TX_POWEER_3_DBM;
+                break;
+            case APP_TX_POWEER_4_DBM:
+                sysparam.txPower = LL_TX_POWEER_4_DBM;
+                break;
+            case APP_TX_POWEER_5_DBM:
+                sysparam.txPower = LL_TX_POWEER_5_DBM;
+                break;
+            case APP_TX_POWEER_6_DBM:
+            	sysparam.txPower = LL_TX_POWEER_6_DBM;
+            	break;
+            default:
+               	sysparam.txPower = LL_TX_POWEER_5_DBM;
+                break;
+        }
+        bleRelaySetAllReq(BLE_EVENT_SET_TXPOWER);
+        sprintf(message, "Update ble tx power to %d DB[0x%02x]", db, sysparam.txPower);
+        paramSaveAll();
+    }
+	
+}
+
+/**************************************************
+@bref       蓝牙继电器升级指令
+@param
+@return
+@note
+BLEUPS,1,47.106.81.204,9998,1
+BLEUPS,99	//取消
+**************************************************/
+
+static void doBleUPSInstruction(ITEM *item, char *message)
+{
+	uint8_t i;
+	if (item->item_data[1][0] == 0 || item->item_data[1][0] == '?')
+	{
+		strcpy(message, "Please enter ble ups param");
+	}
+	else
+	{
+		if (atoi(item->item_data[1]) == 99)
+		{
+			for (i = 0; i < DEVICE_MAX_CONNECT_COUNT; i++)
+			{
+				if (sysparam.relayUpgrade[i] == BLE_UPGRADE_FLAG)
+				{
+					bleRelayDeleteAll();
+					//startTimer(100, setBleMacCallback, 0);
+					sysparam.relayUpgrade[i] = 0;
+				}
+			}
+			strcpy(message, "Ble ups cancel");
+		}
+		else
+		{
+			for (i = 0; i < DEVICE_MAX_CONNECT_COUNT; i++)
+			{
+				if (sysparam.relayUpgrade[i] == BLE_UPGRADE_FLAG)
+				{
+					sprintf(message, "Dev(%d) is being upgraded, please try it again ", i);
+					return;
+				}
+			}
+			uint8_t index; 
+			index = atoi(item->item_data[4]);
+			if (index >= DEVICE_MAX_CONNECT_COUNT)
+			{
+				strcpy(message, "Dev number is error");
+				return;
+			}
+			strncpy(sysparam.upgradeServer, item->item_data[2], 50);
+			sysparam.upgradeServer[49] = 0;
+			sysparam.upgradePort = atoi(item->item_data[3]);
+			sysparam.relayUpgrade[index] = BLE_UPGRADE_FLAG;
+			sprintf(message, "Ble device will download the firmware from %s:%d in 5 seconds", sysparam.upgradeServer,
+            sysparam.upgradePort);
+            bleRelayClearReq(index, BLE_EVENT_ALL);
+            bleRelaySetReq(index, BLE_EVENT_OTA);
+		}
+		paramSaveAll();
+	}
+}
 
 /*--------------------------------------------------------------------------------------*/
 static void doinstruction(int16_t cmdid, ITEM *item, insMode_e mode, void *param)
@@ -2015,6 +2192,15 @@ static void doinstruction(int16_t cmdid, ITEM *item, insMode_e mode, void *param
 			break;
 		case UNCAPALM_INS:
 			doUncapAlmInstrucion(item, message);
+			break;
+		case READVERSION_INS:
+			doReadVersionInstruction(item, message);
+			break;
+		case SETTXPOWER_INS:
+			doSetTxPowerInstruction(item, message);
+			break;
+		case BLEUPS_INS:
+			doBleUPSInstruction(item, message);
 			break;
         default:
             if (mode == SMS_MODE)

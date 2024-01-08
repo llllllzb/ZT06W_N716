@@ -24,7 +24,7 @@
 static SystemLEDInfo sysledinfo;
 static motionInfo_s motionInfo;
 static int8_t wifiTimeOutId = -1;
-
+static centralPoint_s centralPoi = { 0 };
 
 /**************************************************
 @bref		bit0 置位，布防
@@ -304,6 +304,15 @@ void gpsRequestSet(uint32_t flag)
 	if (sysinfo.lowBatProtectFlag)
 	{
 		LogMessage(DEBUG_ALL, "gpsRequestSet==>Low Battery");
+		return;
+	}
+	if (getTerminalAccState() == 0 && centralPoi.init && (flag & GPS_REQUEST_UPLOAD_ONE))
+	{
+		gpsinfo_s newgps;
+		tmos_memcpy(&newgps, &centralPoi.gpsinfo, sizeof(gpsinfo_s));
+		updateHistoryGpsTime(&newgps);
+        protocolSend(NORMAL_LINK, PROTOCOL_12, &newgps);
+	    jt808SendToServer(TERMINAL_POSITION,   &newgps);
 		return;
 	}
     LogPrintf(DEBUG_ALL, "gpsRequestSet==>0x%04X", flag);
@@ -617,8 +626,38 @@ static void gpsRequestTask(void)
         gpsInvalidFlag = 0;
         gpsInvalidFlagTick = 0;
     }
-
 }
+
+/**************************************************
+@bref		生成基准点
+@param
+@return
+@note
+**************************************************/
+
+void centralPointInit(gpsinfo_s *gpsinfo)
+{
+	centralPoi.init = 1;
+	tmos_memcpy(&centralPoi.gpsinfo, gpsinfo, sizeof(gpsinfo_s));
+	LogPrintf(DEBUG_ALL, "%s==>lat:%.2f, lon:%.2f", __FUNCTION__, 
+				centralPoi.gpsinfo.latitude, centralPoi.gpsinfo.longtitude);
+}
+
+/**************************************************
+@bref		清除基准点
+@param
+@return
+@note
+**************************************************/
+
+void centralPointClear(void)
+{
+	centralPoi.init = 0;
+	tmos_memset(&centralPoi.gpsinfo, 0, sizeof(gpsinfo_s));
+	LogPrintf(DEBUG_ALL, "%s==>OK", __FUNCTION__);
+}
+
+
 /**************************************************
 @bref		上送一个gps位置
 @param
@@ -630,13 +669,17 @@ static void gpsUplodOnePointTask(void)
 {
     gpsinfo_s *gpsinfo;
     static uint16_t runtick = 0;
-    static uint8_t uploadtick = 0;
+    static uint8_t  uploadtick = 0;
     //判断是否有请求该事件
     if (sysinfo.gpsOnoff == 0)
+    {
+    	runtick    = 0;
+    	uploadtick = 0;
         return;
+    }
     if (gpsRequestGet(GPS_REQUEST_UPLOAD_ONE) == 0)
     {
-        runtick = 0;
+        runtick    = 0;
         uploadtick = 0;
         return;
     }
@@ -658,18 +701,98 @@ static void gpsUplodOnePointTask(void)
         return;
     }
     runtick = 0;
-    if (++uploadtick >= 10)
-    {
-        uploadtick = 0;
-        if (sysinfo.flag123)
+    uploadtick++;
+    LogPrintf(DEBUG_ALL, "uploadtick:%d", uploadtick);
+	if (uploadtick >= 10)
+	{
+		if (sysinfo.flag123)
         {
             dorequestSend123();
         }
-        protocolSend(NORMAL_LINK, PROTOCOL_12, getCurrentGPSInfo());
-        jt808SendToServer(TERMINAL_POSITION, getCurrentGPSInfo());
-        gpsRequestClear(GPS_REQUEST_UPLOAD_ONE);
+		protocolSend(NORMAL_LINK, PROTOCOL_12, getCurrentGPSInfo());
+	    jt808SendToServer(TERMINAL_POSITION, getCurrentGPSInfo());
+	    gpsRequestClear(GPS_REQUEST_UPLOAD_ONE);
+	    if (getTerminalAccState() == 0)
+	    {
+			centralPointInit(getCurrentGPSInfo());
+	    }
     }
+	
 
+//    /* 静止时采用漂移点过滤算法 */
+//    if (getTerminalAccState() == 0)
+//    {
+//		if (centralPoi.init)
+//		{
+//			double centerRadius;
+//			centerRadius = calculateTheDistanceBetweenTwoPonits(gpsinfo->latitude, gpsinfo->longtitude, 
+//																centralPoi.latitude, centralPoi.longtitude);
+//			LogPrintf(DEBUG_ALL, "Center radius:%.2f", centerRadius);	
+//			if (centerRadius < 6.5 || uploadtick >= 30)
+//			{
+//				if (sysinfo.flag123)
+//		        {
+//		            dorequestSend123();
+//		        }
+//				protocolSend(NORMAL_LINK, PROTOCOL_12, getCurrentGPSInfo());
+//			    jt808SendToServer(TERMINAL_POSITION, getCurrentGPSInfo());
+//			    gpsRequestClear(GPS_REQUEST_UPLOAD_ONE);
+//			}
+//		}
+//		else
+//		{
+//			uint8_t total = 0;
+//			for (uint8_t i = 0; i < sizeof(gpsinfo->gpsCn); i++)
+//			{
+//				if (gpsinfo->gpsCn[i] >= 35)
+//				{
+//					total++;
+//				}
+//			}
+//			for (uint8_t j = 0; j < sizeof(gpsinfo->beidouCn); j++)
+//			{
+//				if (gpsinfo->beidouCn[j] >= 30)
+//					total++;
+//			}
+//			LogPrintf(DEBUG_ALL, "Cn total:%d", total);
+//			if (gpsinfo->used_star >= 10 || total >= 6 || (gpsinfo->pdop <= 6 && uploadtick >= 10))
+//			{
+//				if (sysinfo.flag123)
+//		        {
+//		            dorequestSend123();
+//		        }
+//				protocolSend(NORMAL_LINK, PROTOCOL_12, getCurrentGPSInfo());
+//			    jt808SendToServer(TERMINAL_POSITION, getCurrentGPSInfo());
+//			    gpsRequestClear(GPS_REQUEST_UPLOAD_ONE);
+//			    centralPointInit(gpsinfo->latitude, gpsinfo->longtitude);
+//			}
+//			else if (uploadtick >= 30)
+//			{
+//				if (sysinfo.flag123)
+//		        {
+//		            dorequestSend123();
+//		        }
+//				protocolSend(NORMAL_LINK, PROTOCOL_12, getCurrentGPSInfo());
+//			    jt808SendToServer(TERMINAL_POSITION, getCurrentGPSInfo());
+//			    gpsRequestClear(GPS_REQUEST_UPLOAD_ONE);
+//			    centralPointInit(gpsinfo->latitude, gpsinfo->longtitude);
+//			}
+//		}
+//    }
+//    /* 运动时 */
+//    else
+//    {
+//    	if (uploadtick >= 10)
+//    	{
+//			if (sysinfo.flag123)
+//	        {
+//	            dorequestSend123();
+//	        }
+//			protocolSend(NORMAL_LINK, PROTOCOL_12, getCurrentGPSInfo());
+//		    jt808SendToServer(TERMINAL_POSITION, getCurrentGPSInfo());
+//		    gpsRequestClear(GPS_REQUEST_UPLOAD_ONE);
+//	    }
+//    }
 }
 
 /**************************************************
@@ -797,42 +920,7 @@ void alarmRequestTask(void)
         alarm = 0;
         protocolSend(NORMAL_LINK, PROTOCOL_16, &alarm);
     }
-
-    //急加速报警
-    if (sysinfo.alarmRequest & ALARM_ACCLERATE_REQUEST)
-    {
-        alarmRequestClear(ALARM_ACCLERATE_REQUEST);
-        LogMessage(DEBUG_ALL, "alarmRequestTask==>Rapid Accleration Alarm");
-        alarm = 9;
-        protocolSend(NORMAL_LINK, PROTOCOL_16, &alarm);
-    }
-    //急减速报警
-    if (sysinfo.alarmRequest & ALARM_DECELERATE_REQUEST)
-    {
-        alarmRequestClear(ALARM_DECELERATE_REQUEST);
-        LogMessage(DEBUG_ALL,
-                   "alarmRequestTask==>Rapid Deceleration Alarm");
-        alarm = 10;
-        protocolSend(NORMAL_LINK, PROTOCOL_16, &alarm);
-    }
-
-    //急左转报警
-    if (sysinfo.alarmRequest & ALARM_RAPIDLEFT_REQUEST)
-    {
-        alarmRequestClear(ALARM_RAPIDLEFT_REQUEST);
-        LogMessage(DEBUG_ALL, "alarmRequestTask==>Rapid LEFT Alarm");
-        alarm = 11;
-        protocolSend(NORMAL_LINK, PROTOCOL_16, &alarm);
-    }
-
-    //急右转报警
-    if (sysinfo.alarmRequest & ALARM_RAPIDRIGHT_REQUEST)
-    {
-        alarmRequestClear(ALARM_RAPIDRIGHT_REQUEST);
-        LogMessage(DEBUG_ALL, "alarmRequestTask==>Rapid RIGHT Alarm");
-        alarm = 12;
-        protocolSend(NORMAL_LINK, PROTOCOL_16, &alarm);
-    }
+    
     //蓝牙断连报警
     if (sysinfo.alarmRequest & ALARM_BLE_LOST_REQUEST)
     {
@@ -979,6 +1067,7 @@ static void motionStateUpdate(motion_src_e src, motionState_e newState)
         }
         terminalAccon();
         //ClearLastMilePoint();
+        centralPointClear();
         hiddenServerCloseClear();
     }
     else
@@ -1595,7 +1684,6 @@ static void modeStart(void)
             paramSaveAll();
             break;
     }
-    wifiRequestSet(DEV_EXTEND_OF_MY);
     gpsRequestSet(GPS_REQUEST_UPLOAD_ONE);
     ledStatusUpdate(SYSTEM_LED_RUN, 1);
     modulePowerOn();
@@ -1934,7 +2022,8 @@ void wakeUpByInt(uint8_t      type, uint8_t sec)
             sysinfo.ringWakeUpTick = sec;
             break;
         case 1:
-            sysinfo.cmdTick = sec;
+        	if (sec > sysinfo.cmdTick)
+            	sysinfo.cmdTick = sec;
             break;
     }
 

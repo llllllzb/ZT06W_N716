@@ -169,10 +169,6 @@ static void doAtdebugCmd(uint8_t *buf, uint16_t len)
     else if (mycmdPatch((uint8_t *)item.item_data[0], (uint8_t *)"BLESCAN"))
     {
 		bleCentralStartDiscover();
-    }    
-    else if (mycmdPatch((uint8_t *)item.item_data[0], (uint8_t *)"BLEINIT"))
-    {
-		bleCentralInit();
     }
     else if (mycmdPatch((uint8_t *)item.item_data[0], (uint8_t *)"LEN"))
     {
@@ -184,13 +180,9 @@ static void doAtdebugCmd(uint8_t *buf, uint16_t len)
 		f=calculateTheDistanceBetweenTwoPonits(a,b,c,d);
 		LogPrintf(DEBUG_ALL, "a:%lf, b:%lf, c:%lf, d:%lf, f:%lf", a,b,c,d,f);
     }
-    else if (mycmdPatch((uint8_t *)item.item_data[0], (uint8_t *)"AA"))
+    else if (mycmdPatch((uint8_t *)item.item_data[0], (uint8_t *)"READBLE"))
     {
-		sysinfo.debugflag = 1;
-    }
-    else if (mycmdPatch((uint8_t *)item.item_data[0], (uint8_t *)"BB"))
-    {
-		sysinfo.debugflag = 0;
+		bleCentralRead(0, 0);
     }
     else
     {

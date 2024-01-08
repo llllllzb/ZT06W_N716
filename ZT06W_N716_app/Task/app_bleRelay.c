@@ -13,6 +13,7 @@
 #include "app_encrypt.h"
 #include "app_instructioncmd.h"
 #include "app_server.h"
+#include "app_protocol.h"
 
 static bleRelayDev_s bleRelayList[BLE_CONNECT_LIST_SIZE];
 
@@ -114,9 +115,16 @@ int8_t bleRelayInsert(uint8_t *addr, uint8_t addrType)
             tmos_memcpy(bleRelayList[i].addr, addr, 6);
             bleRelayList[i].addrType = addrType;
             ret = bleDevConnAdd(addr, addrType);
-            bleRelaySetReq(i, BLE_EVENT_SET_RF_THRE | BLE_EVENT_SET_OUTV_THRE | BLE_EVENT_SET_AD_THRE | BLE_EVENT_GET_AD_THRE |
-                           BLE_EVENT_GET_RF_THRE | BLE_EVENT_GET_OUT_THRE | BLE_EVENT_GET_OUTV | BLE_EVENT_GET_RFV |
-                           BLE_EVENT_GET_PRE_PARAM | BLE_EVENT_SET_PRE_PARAM | BLE_EVENT_GET_PRE_PARAM | BLE_EVENT_CHK_SOCKET);
+            if (sysparam.relayUpgrade[i] != BLE_UPGRADE_FLAG)
+            {
+            	bleRelaySetReq(i, BLE_EVENT_SET_RF_THRE   | BLE_EVENT_SET_OUTV_THRE | 
+            					  BLE_EVENT_SET_AD_THRE   | BLE_EVENT_GET_AD_THRE   |
+		                          BLE_EVENT_GET_RF_THRE   | BLE_EVENT_GET_OUT_THRE  | 
+		                          BLE_EVENT_GET_OUTV      | BLE_EVENT_GET_RFV       | 
+		                          BLE_EVENT_VERSION       | BLE_EVENT_GET_PRE_PARAM | 
+		                          BLE_EVENT_SET_PRE_PARAM | BLE_EVENT_GET_PRE_PARAM | 
+		                          BLE_EVENT_CHK_SOCKET    | BLE_EVENT_SET_TXPOWER);
+            }
             return ret;
 
         }
@@ -186,162 +194,78 @@ bleRelayInfo_s *bleRelayGeInfo(uint8_t i)
     return &bleRelayList[i].bleInfo;
 }
 
+
 /**************************************************
-@bref       蓝牙无网连接通讯管理
+@bref       蓝牙连接权限判别器
 @param
 @return
-@note	1:开启蓝牙调度			1:关闭蓝牙调度	
-可能存在一种情况是蓝牙能够连接，但是一连就断，那么主机会
-一直连接，就会导致占用继电器的蓝牙，所以如果出现这种情况
-就只连三分钟，超过3分钟直接断了过段时间再连
-
-if ((sysparam.bleAutoDisc != 0 &&
-		((sysinfo.sysTick - relayinfo->updateTick) % (sysparam.bleAutoDisc * 60 / 2)) == 0 &&
-		  sysinfo.sysTick != 0) ||
-		  sysinfo.bleforceCmd != 0)
-
+@note
+允许蓝牙连接的条件：
+1、网络正常
+2、特殊指令需要连接
+3、网络异常情况下,每隔一段时间要进行握手通讯
 **************************************************/
 
-//uint8_t bleNoNetHandShakeTask(void)
-//{
-//
-//	static uint8_t connFlag = 0;
-//	uint8_t i ,cnt = 0;
-//	bleRelayInfo_s *relayinfo;
-//	deviceConnInfo_s *devinfo;
-//	static uint32_t timeouttick = 0;
-//	LogPrintf(DEBUG_ALL, "Cmd:%d, connFlag:%d, timeouttick:%d", sysinfo.bleforceCmd, connFlag, timeouttick);
-//	if (primaryServerIsReady() == 0)
-//    {
-//		for (i = 0; i < bleDevGetCnt(); i++)
-//	    {
-//	        relayinfo = bleRelayGeInfo(i);
-//	        devinfo = bleDevGetInfo(i);
-//	        if (relayinfo != NULL)
-//	        {
-//	        	/* 特殊连接要求 */
-//				/* 断连后要以断连参数的1/2的频率去和BLE握          手 */
-//				/* 断连参数为0则不进行握手 */
-//	        	/* 握手时长不超过3分钟 */ 
-//	        	/* 有特殊指令则需要连接蓝牙 */
-//	        	if (primaryServerIsReady() == 0)
-//	        	{
-//					if ((sysparam.bleAutoDisc != 0 &&
-//						(sysinfo.sysTick - relayinfo->updateTick) >= sysparam.bleAutoDisc * 60 / 2 &&
-//						  sysinfo.sysTick != 0) ||
-//						  sysinfo.bleforceCmd != 0)
-//					{
-//						devinfo->disReq = 0;
-//					}
-//					
-//				}
-//				else
-//				{
-//					devinfo->disReq = 0;
-//				}
-//				
-//	        }
-//	    }
-//    }
-//    /* 有网络，保持蓝牙连接 */
-//    else
-//    {
-//    	connFlag = 0;
-//    	timeouttick = 0;
-//    	LogMessage(DEBUG_ALL, "111");
-//		return 1;
-//    }
-//    
-////    if (connFlag)
-////    {
-////    	/* 特殊连接要求最多只连3分钟 */
-////		if (timeouttick++ >= 180)  
-////		{
-////			timeouttick = 0;
-////			connFlag = 0;
-////			sysinfo.bleforceCmd = 0;	// 把强行发蓝牙指令的标志清掉
-////			LogMessage(DEBUG_ALL, "222");
-////			return 0;
-////		}
-////		LogMessage(DEBUG_ALL, "333");
-////		return 1;
-////    }
-////    else
-////    {
-////		timeouttick = 0;
-////		LogMessage(DEBUG_ALL, "444");
-////		return 0;
-////    }
-//}
-
-
-uint8 bleHandShakeTask(void)
+void bleConnPermissonManger(void)
 {
 	uint8_t i;
-	static uint16_t timeouttick_dev1 = 0;
-	static uint16_t timeouttick_dev2 = 0;
 	bleRelayInfo_s *relayinfo;
 	deviceConnInfo_s *devinfo;
+	for (i = 0; i < bleDevGetCnt(); i++)
+	{
+		
+		if (sysparam.relayUpgrade[i] == BLE_UPGRADE_FLAG)
+		{
+			bleDevAllPermitDisable();
+			bleDevSetPermit(i, BLE_CONN_ENABLE);
+			return;
+		}
+	}
 	if (primaryServerIsReady())
 	{
-		bleDevSetPermit(0, 1);
-		bleDevSetPermit(1, 1);
-		timeouttick_dev1 = 0;
-		timeouttick_dev2 = 0;
-		return 1;
+		bleDevSetPermit(BLE_ID_0, BLE_CONN_ENABLE);
+		bleDevSetPermit(BLE_ID_1, BLE_CONN_ENABLE);
 	}
-	if (primaryServerIsReady() == 0)
+	else if (primaryServerIsReady() == 0)
 	{
 		for (i = 0; i < bleDevGetCnt(); i++)
 		{
 			relayinfo = bleRelayGeInfo(i);
-			if ((sysparam.bleAutoDisc != 0 &&
-						(sysinfo.sysTick - relayinfo->updateTick) >= sysparam.bleAutoDisc * 60 / 2) ||
-						  sysinfo.bleforceCmd != 0)
+			devinfo   = bleDevGetInfoById(i);
+			if (relayinfo == NULL)
 			{
-				bleDevSetPermit(i, 1);
-				/* 每隔一段时间刷新定时器 */
-				if ((sysinfo.sysTick - relayinfo->updateTick) % (sysparam.bleAutoDisc * 60 / 2) == 0 &&
-					 sysinfo.sysTick != 0)
-				{	
-					if (i == 0)
-					{
-						timeouttick_dev1 = 0;
-					}
-					else
-					{
-						timeouttick_dev2 = 0;
-					}
-				}
+				continue;
 			}
-			else 
+			if (devinfo == NULL)
 			{
-				bleDevSetPermit(i, 0);
+				continue;
 			}
-		}
-		if (bleDevGetPermit(0))
-		{
-			if (timeouttick_dev1++ >= 180)
+			if (sysparam.bleAutoDisc == 0)
 			{
-				bleDevSetPermit(0, 0);
+				continue;
 			}
-		}
-		else {
-			timeouttick_dev1 = 0;
-		}
-		if (bleDevGetPermit(1))
-		{
-			if (timeouttick_dev2++ >= 180)
+			if (((sysinfo.sysTick - relayinfo->updateTick) % (sysparam.bleAutoDisc * 60 / 5) == 0 &&
+				  (sysinfo.sysTick - relayinfo->updateTick) != 0))
 			{
-				bleDevSetPermit(1, 0);
+				LogPrintf(DEBUG_BLE, "ble[%d] connect period", i);
+				bleDevSetPermit(i, BLE_CONN_ENABLE);
+				bleDevSetConnTick(i, 35);
 			}
-		}
-		else {
-			timeouttick_dev2 = 0;
+			if (devinfo->connTick != 0)
+			{
+				devinfo->connTick--;
+			}
+			if (devinfo->connTick == 0   ||
+				sysinfo.bleforceCmd != 0)
+			{
+				bleDevSetPermit(i, BLE_CONN_DISABLE);
+			}
+			LogPrintf(DEBUG_BLE, "ble[%d]tick:%d permit:%d uptick:%d", i, devinfo->connTick, bleDevGetPermit(i), sysinfo.sysTick - relayinfo->updateTick);
 		}
 	}
-	LogPrintf(DEBUG_ALL, "tick:%d %d permit:%d %d", timeouttick_dev1, timeouttick_dev2, bleDevGetPermit(0), bleDevGetPermit(1));
+	
 }
+
 
 /**************************************************
 @bref       蓝牙断连侦测
@@ -390,10 +314,20 @@ static void bleDiscDetector(void)
 
 void blePeriodTask(void)
 {
+	if (bleDevGetCnt() == 0)
+		return;
+	for (uint8_t i = 0; i < DEVICE_MAX_CONNECT_COUNT; i++)
+	{
+		if (sysparam.relayUpgrade[i] == BLE_UPGRADE_FLAG)
+		{
+			return;
+		}
+	}
     static uint8_t runTick = 0;
     if (runTick++ >= 30)
     {
         runTick = 0;
+        LogPrintf(DEBUG_BLE, ">>>>>>>>>>>>>>>>>Ble period<<<<<<<<<<<<<<<<");
         bleRelaySetAllReq(BLE_EVENT_GET_OUTV | BLE_EVENT_GET_RFV | BLE_EVENT_CHK_SOCKET);
     }
     bleDiscDetector();
@@ -465,7 +399,7 @@ void bleRelaySendDataTry(void)
                 }
                 if (event & BLE_EVENT_CHK_SOCKET)
                 {
-					LogPrintf(DEBUG_ALL, "try to send socket status is %s", primaryServerIsReady() ? "OK" : "ERR");
+					LogPrintf(DEBUG_BLE, "try to send socket status is %s", primaryServerIsReady() ? "OK" : "ERR");
 					param[0] = primaryServerIsReady();
 					bleRelaySendProtocol(devInfo->connHandle, devInfo->charHandle, CMD_CHK_SOCKET_STATUS, param, 1);
 					bleRelayClearReq(ind, BLE_EVENT_CHK_SOCKET);
@@ -473,6 +407,12 @@ void bleRelaySendDataTry(void)
                 }
 
                 //非固定发送组
+                if (event & BLE_EVENT_OTA)
+                {
+					LogPrintf(DEBUG_UP, "try to ota dev(%d)", ind);
+					bleRelaySendProtocol(devInfo->connHandle, devInfo->charHandle, CMD_OTA, param, 0);
+					break;
+                }
                 if (event & BLE_EVENT_SET_DEVON)
                 {
                     LogMessage(DEBUG_BLE, "try to set relay on");
@@ -487,6 +427,12 @@ void bleRelaySendDataTry(void)
                     bleRelaySendProtocol(devInfo->connHandle, devInfo->charHandle, CMD_DEV_OFF, param, paramLen);
                     break;
                 }
+                if (event & BLE_EVENT_VERSION)
+			    {
+					LogMessage(DEBUG_BLE, "try to get version");
+					bleRelaySendProtocol(devInfo->connHandle, devInfo->charHandle, CMD_VER, param, 0);
+			        break;
+			    }
                 if (event & BLE_EVENT_CLR_CNT)
                 {
                     LogMessage(DEBUG_BLE, "try to clear shield");
@@ -565,15 +511,45 @@ void bleRelaySendDataTry(void)
                 }
                 if (event & BLE_EVENT_RES_LOCK_ALRAM)
 		        {
-					LogMessage(DEBUG_ALL, "try to clear shield lock alarm");
-					bleRelaySendProtocol(devInfo->connHandle, devInfo->charHandle, CMD_RES_SHIELD_LOCK_ALRAM, param, 1);
+					LogMessage(DEBUG_BLE, "try to clear shield lock alarm");
+					bleRelaySendProtocol(devInfo->connHandle, devInfo->charHandle, CMD_RES_SHIELD_LOCK_ALRAM, param, 0);
 					break;
 		        }
-		        if (event & BLE_EVENT_CLR_LOCK_ALARM)
+			    if (event & BLE_EVENT_SET_TXPOWER)
 			    {
-					LogMessage(DEBUG_ALL, "try to clear shield lock");
-			        bleRelaySendProtocol(devInfo->connHandle, devInfo->charHandle, CMD_CLEAR_SHIELD_LOCK_ALRAM, param, 0);
+					LogMessage(DEBUG_ALL, "try to set tx power");
+					bleRelaySendProtocol(devInfo->connHandle, devInfo->charHandle, CMD_SET_TXPOWER, param, 0);
+			        break;
 			    }
+//			    /* ota部分 */
+//			    /* ota开始 */
+//			    if (event & BLE_EVENT_OTA_START)
+//				{
+//					LogPrintf(DEBUG_UP, "Dev(%d) try to start ota ", ind);
+//					bleRelaySendProtocol(devInfo->connHandle, devInfo->charHandle, CMD_OTA_START, param, 0);
+//					break;
+//				}
+//				/* ota擦除 */
+//			    if (event & BLE_EVENT_OTA_EARSE)
+//				{
+//					LogPrintf(DEBUG_UP, "Dev(%d) try to earse program ", ind);
+//					bleRelaySendProtocol(devInfo->connHandle, devInfo->charHandle, CMD_OTA_EARSE, param, 0);
+//					break;
+//				}
+//				/* ota写入 */
+//				if (event & BLE_EVENT_OTA_WRITE)
+//				{
+//					LogPrintf(DEBUG_UP, "Dev(%d) try to write program ", ind);
+//					bleRelaySendProtocol(devInfo->connHandle, devInfo->charHandle, CMD_OTA_WRITE, param, 0);
+//					break;
+//				}
+//				/* ota结束 */
+//				if (event & BLE_EVENT_OTA_FINISH)
+//				{
+//					LogPrintf(DEBUG_UP, "Dev(%d) try to finish ota ", ind);
+//					bleRelaySendProtocol(devInfo->connHandle, devInfo->charHandle, CMD_OTA_FINISH, param, 0);
+//					break;
+//				}
             }
 
         }
@@ -636,6 +612,59 @@ static void bleRelaySendProtocol(uint16_t connHandle, uint16_t charHandle, uint8
     }
 }
 
+/**************************************************
+@bref       蓝牙Ota发送协议
+@param
+    cmd     指令类型
+    data    数据
+    data_len数据长度
+@return
+@note
+**************************************************/
+
+uint8_t bleOtaSendProtocol(uint16_t connHandle, 
+                            uint16_t charHandle,
+                            uint8_t  cmd,
+                            uint8_t *data,
+                            uint8_t  data_len)
+{
+	OTA_IAP_CMD_t iap_send_data;
+	uint8_t ret = bleIncorrectMode;
+	char message[255] = { 0 };
+	uint8_t size_len;
+	tmos_memset(&iap_send_data, 0, sizeof(OTA_IAP_CMD_t));
+	switch (cmd)
+	{
+		case CMD_IAP_INFO:
+			iap_send_data.info.cmd = CMD_IAP_INFO;
+			iap_send_data.info.len = 12;
+			break;
+		case CMD_IAP_PROM:
+			
+			break;
+		case CMD_IAP_ERASE:
+			
+			break;
+		case CMD_IAP_VERIFY:
+			
+			break;
+		case CMD_IAP_END:
+			
+			break;
+		default:
+			iap_send_data.info.cmd = CMD_IAP_ERR;
+			break;
+	}
+	size_len = iap_send_data.other.buf[1] + 1 > 127 ? 127 : iap_send_data.other.buf[1] + 1;
+	byteToHexString((uint8_t *)iap_send_data.other.buf, (uint8_t *)message, size_len);
+	message[size_len * 2] = 0;
+	LogPrintf(DEBUG_ALL, "ble send [%d]:%s", size_len, message);
+	ret = bleCentralSend(connHandle, charHandle, iap_send_data.other.buf, iap_send_data.other.buf[1] + 1);
+
+	return ret;
+	
+	
+}
 
 
 /**************************************************
@@ -647,10 +676,11 @@ static void bleRelaySendProtocol(uint16_t connHandle, uint16_t charHandle, uint8
 @note       0C 04 80 09 04 E7 78 0D
 **************************************************/
 
-void bleRelayRecvParser(uint8_t connHandle, uint8_t *data, uint8_t len)
+void bleRelayRecvParser(uint16_t connHandle, uint8_t *data, uint8_t len)
 {
     uint8_t readInd, size, crc, i, ind = BLE_CONNECT_LIST_SIZE;
     uint8_t *addr;
+    uint8_t versionLen;
     char debug[20];
     uint16_t value16;
     float valuef;
@@ -851,7 +881,7 @@ void bleRelayRecvParser(uint8_t connHandle, uint8_t *data, uint8_t len)
                 bleRelayClearReq(ind, BLE_EVENT_SET_RTC);
                 break;
             case CMD_CHK_SOCKET_STATUS:
-				LogPrintf(DEBUG_ALL, "BLE==>check socket status");
+				LogPrintf(DEBUG_BLE, "^^BLE==>check socket status");
             	break;
            	case CMD_SEND_SHIELD_LOCK_ALARM:
            	    sysparam.relayCtl = 1;
@@ -861,15 +891,36 @@ void bleRelayRecvParser(uint8_t connHandle, uint8_t *data, uint8_t len)
 				bleRelaySetReq(ind, BLE_EVENT_RES_LOCK_ALRAM);
            		break;
            	case CMD_RES_SHIELD_LOCK_ALRAM:
-				LogMessage(DEBUG_ALL, "BLE==>res alarm success");
+				LogMessage(DEBUG_BLE, "^^BLE==>res alarm success");
 				bleRelayClearReq(ind, BLE_EVENT_RES_LOCK_ALRAM);
             	break;
             case CMD_CLEAR_SHIELD_LOCK_ALRAM:
-				LogMessage(DEBUG_ALL, "BLE==>clear shield lock success");
-                bleRelayClearReq(ind, BLE_EVENT_CLR_LOCK_ALARM);
+				LogMessage(DEBUG_BLE, "^^BLE==>clear shield lock success");
+
            		break;
+           	case CMD_VER:
+           		versionLen = data[readInd + 1] - 2;	//减掉协议号+升级标志
+           		bleRelayList[ind].bleInfo.upgradeFlag = data[readInd + 4];
+           		strncpy(bleRelayList[ind].bleInfo.version, data + readInd + 5, versionLen);
+				LogPrintf(DEBUG_BLE, "^^BLE==>Dev(%d) upflag:%d ver:%s", ind, bleRelayList[ind].bleInfo.upgradeFlag, bleRelayList[ind].bleInfo.version);
+				if (sysparam.relayUpgrade[ind] == BLE_UPGRADE_FLAG)
+				{
+					updateUISVersion(data + readInd + 5);
+				}
+				bleRelayClearReq(ind, BLE_EVENT_VERSION);
+           		break;
+           	case CMD_SET_TXPOWER:
+				LogPrintf(DEBUG_BLE, "^^BLE==>Dev(%d) Tx power update success", ind);
+				bleRelayClearReq(ind, BLE_EVENT_SET_TXPOWER);
+           		break;
+           	case CMD_OTA:
+				LogPrintf(DEBUG_UP, "^^BLE==>Dev(%d) enter ota", ind);
+				bleRelayClearReq(ind, BLE_EVENT_OTA);
+           		break;
+
         }
         readInd += size + 3;
     }
 }
+
 

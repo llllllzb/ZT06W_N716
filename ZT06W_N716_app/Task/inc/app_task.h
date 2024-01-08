@@ -1,7 +1,8 @@
 #ifndef APP_TASK
 #define APP_TASK
 #include <stdint.h>
-
+#include "config.h"
+#include "app_gps.h"
 #define SYSTEM_LED_RUN					0X01
 #define SYSTEM_LED_NETOK				0X02
 #define SYSTEM_LED_GPSOK				0X04	//普通GPS
@@ -22,10 +23,8 @@
 #define ALARM_LOSTV_REQUEST				0x00000002 //断电
 #define ALARM_LOWV_REQUEST				0x00000004 //低电
 #define ALARM_SHUTTLE_REQUEST			0x00000008 //震动报警
-#define ALARM_ACCLERATE_REQUEST			0x00000010
-#define ALARM_DECELERATE_REQUEST		0x00000020
-#define ALARM_RAPIDRIGHT_REQUEST		0x00000040
-#define ALARM_RAPIDLEFT_REQUEST			0x00000080
+
+
 #define ALARM_SOS_REQUEST				0x00000100
 #define ALARM_BLE_LOST_REQUEST          0x00000200
 #define ALARM_BLE_RESTORE_REQUEST       0x00000400
@@ -53,7 +52,7 @@
 #define APP_TASK_KERNAL_EVENT		    0x0001
 #define APP_TASK_POLLUART_EVENT			0x0002
 
-#define UART_RECV_BUFF_SIZE 			768
+#define UART_RECV_BUFF_SIZE 			512
 #define DEBUG_BUFF_SIZE					256
 
 
@@ -134,6 +133,12 @@ typedef struct
     uint8_t tapCnt[50];
 } motionInfo_s;
 
+typedef struct
+{
+	uint8_t   init;		//表示基准点已生成
+	gpsinfo_s gpsinfo;
+}centralPoint_s;
+
 void terminalDefense(void);
 void terminalDisarm(void);
 uint8_t getTerminalAccState(void);
@@ -153,6 +158,7 @@ uint32_t gpsRequestGet(uint32_t flag);
 uint8_t gpsRequestOtherGet(uint32_t flag);
 void gpsTcpSendRequest(void);
 
+void centralPointClear(void);
 
 void saveGpsHistory(void);
 

@@ -54,11 +54,13 @@ void paramDefaultInit(uint8_t level)
         strcpy(sysparam.hiddenServer, "jzwz.basegps.com");
         strcpy(sysparam.bleServer, "jzwz.basegps.com");
         strcpy(sysparam.jt808Server, "47.106.96.28");
+        strcpy(sysparam.upgradeServer, "47.106.81.204");
 
         sysparam.ServerPort = 9998;
         sysparam.bleServerPort = 9998;
         sysparam.hiddenPort = 9998;
         sysparam.jt808Port = 9997;
+        sysparam.upgradePort = 9998;
 
         sysparam.utc = 8;
         sysparam.AlarmTime[0] = 720;
@@ -93,10 +95,10 @@ void paramDefaultInit(uint8_t level)
     dynamicParam.noNmeaRstCnt = 0;
     sysparam.sosalm = ALARM_TYPE_NONE;
 	sysparam.ldrEn = 1;
-    sysparam.bleRfThreshold = 48;
-    sysparam.bleOutThreshold = 1500;
+    sysparam.bleRfThreshold = 140;
+    sysparam.bleOutThreshold = 1320;
     sysparam.bleAutoDisc = 0;
-    sysparam.blePreShieldVoltage = 48;
+    sysparam.blePreShieldVoltage = 140;
     sysparam.blePreShieldDetCnt = 10;
     sysparam.blePreShieldHoldTime = 1;
     sysparam.relaySpeed = 20;
@@ -120,6 +122,9 @@ void paramDefaultInit(uint8_t level)
 	sysparam.simSel = 0;
 	sysparam.uncapalm=1;
 	sysparam.uncapLock=0;
+	sysparam.txPower = LL_TX_POWEER_5_DBM;
+	sysparam.relayUpgrade[0] = 0;
+	sysparam.relayUpgrade[1] = 0;
 	dynamicParam.sim = 1;
     paramSaveAll();
     dynamicParamSaveAll();
@@ -136,6 +141,18 @@ void paramInit(void)
     if (sysparam.otaParamFlag != OTA_PARAM_FLAG)
     {
 		sysparam.otaParamFlag = OTA_PARAM_FLAG;
+		paramSaveAll();
+    }
+    /* ·À´ô¾ÀÕý²ÎÊý */
+    if (sysparam.txPower != LL_TX_POWEER_0_DBM &&
+    	sysparam.txPower != LL_TX_POWEER_1_DBM &&
+    	sysparam.txPower != LL_TX_POWEER_2_DBM &&
+    	sysparam.txPower != LL_TX_POWEER_3_DBM &&
+    	sysparam.txPower != LL_TX_POWEER_4_DBM &&
+    	sysparam.txPower != LL_TX_POWEER_5_DBM &&
+    	sysparam.txPower != LL_TX_POWEER_6_DBM )
+    {
+		sysparam.txPower = LL_TX_POWEER_5_DBM;
 		paramSaveAll();
     }
     sysinfo.lowvoltage = sysparam.lowvoltage / 10.0;
