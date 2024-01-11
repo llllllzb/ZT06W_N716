@@ -125,7 +125,7 @@ typedef struct
     uint8_t preDetCnt_threshold;    //预警检测次数
     uint8_t preHold_threshold;      //预警保持
     uint8_t disc_threshold;         //断连阈值
-    uint8_t version[50];			//继电器版本
+    uint8_t version[20];			//继电器版本
     uint8_t upgradeFlag;			//是否需要升级状态
 } bleRelayInfo_s;
 
@@ -197,11 +197,6 @@ void bleRelayRecvParser(uint16_t connHandle, uint8_t *data, uint8_t len);
 void bleRelaySendDataTry(void);
 void blePeriodTask(void);
 void bleConnPermissonManger(void);
-uint8_t bleOtaSendProtocol(uint16_t connHandle,
-										uint16_t charHandle, 
-										uint8_t  cmd, 
-										uint8_t *data, 
-										uint8_t  data_len);
 
 
 #endif /* TASK_INC_APP_BLERELAY_H_ */

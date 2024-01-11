@@ -353,7 +353,6 @@ void bleRelaySendDataTry(void)
     uint16_t value16;
     uint32_t event;
     deviceConnInfo_s *devInfo;
-
     ind = ind % BLE_CONNECT_LIST_SIZE;
     for (; ind  < BLE_CONNECT_LIST_SIZE; ind++)
     {
@@ -612,60 +611,6 @@ static void bleRelaySendProtocol(uint16_t connHandle, uint16_t charHandle, uint8
     }
 }
 
-/**************************************************
-@bref       蓝牙Ota发送协议
-@param
-    cmd     指令类型
-    data    数据
-    data_len数据长度
-@return
-@note
-**************************************************/
-
-uint8_t bleOtaSendProtocol(uint16_t connHandle, 
-                            uint16_t charHandle,
-                            uint8_t  cmd,
-                            uint8_t *data,
-                            uint8_t  data_len)
-{
-	OTA_IAP_CMD_t iap_send_data;
-	uint8_t ret = bleIncorrectMode;
-	char message[255] = { 0 };
-	uint8_t size_len;
-	tmos_memset(&iap_send_data, 0, sizeof(OTA_IAP_CMD_t));
-	switch (cmd)
-	{
-		case CMD_IAP_INFO:
-			iap_send_data.info.cmd = CMD_IAP_INFO;
-			iap_send_data.info.len = 12;
-			break;
-		case CMD_IAP_PROM:
-			
-			break;
-		case CMD_IAP_ERASE:
-			
-			break;
-		case CMD_IAP_VERIFY:
-			
-			break;
-		case CMD_IAP_END:
-			
-			break;
-		default:
-			iap_send_data.info.cmd = CMD_IAP_ERR;
-			break;
-	}
-	size_len = iap_send_data.other.buf[1] + 1 > 127 ? 127 : iap_send_data.other.buf[1] + 1;
-	byteToHexString((uint8_t *)iap_send_data.other.buf, (uint8_t *)message, size_len);
-	message[size_len * 2] = 0;
-	LogPrintf(DEBUG_ALL, "ble send [%d]:%s", size_len, message);
-	ret = bleCentralSend(connHandle, charHandle, iap_send_data.other.buf, iap_send_data.other.buf[1] + 1);
-
-	return ret;
-	
-	
-}
-
 
 /**************************************************
 @bref       协议解析
@@ -681,7 +626,7 @@ void bleRelayRecvParser(uint16_t connHandle, uint8_t *data, uint8_t len)
     uint8_t readInd, size, crc, i, ind = BLE_CONNECT_LIST_SIZE;
     uint8_t *addr;
     uint8_t versionLen;
-    char debug[20];
+    char debug[20] = { 0 };
     uint16_t value16;
     float valuef;
     if (len <= 5)
@@ -798,6 +743,10 @@ void bleRelayRecvParser(uint16_t connHandle, uint8_t *data, uint8_t len)
 
                 valuef = data[readInd + 4] / 100.0;
                 bleRelayList[ind].bleInfo.rf_threshold = valuef;
+                if (bleRelayList[ind].bleInfo.rf_threshold == 0)
+                {
+					
+                }
                 LogPrintf(DEBUG_BLE, "^^BLE==>get shield voltage range %.2fV", valuef);
                 bleRelayClearReq(ind, BLE_EVENT_GET_RF_THRE);
                 break;
@@ -899,14 +848,26 @@ void bleRelayRecvParser(uint16_t connHandle, uint8_t *data, uint8_t len)
 
            		break;
            	case CMD_VER:
-           		versionLen = data[readInd + 1] - 2;	//减掉协议号+升级标志
-           		bleRelayList[ind].bleInfo.upgradeFlag = data[readInd + 4];
-           		strncpy(bleRelayList[ind].bleInfo.version, data + readInd + 5, versionLen);
-				LogPrintf(DEBUG_BLE, "^^BLE==>Dev(%d) upflag:%d ver:%s", ind, bleRelayList[ind].bleInfo.upgradeFlag, bleRelayList[ind].bleInfo.version);
-				if (sysparam.relayUpgrade[ind] == BLE_UPGRADE_FLAG)
-				{
-					updateUISVersion(data + readInd + 5);
+           		versionLen = data[readInd + 1] - 2;
+           		if (versionLen == 1)
+           		{
+           			if (bleRelayList[ind].bleInfo.rfV == 0.0)
+           			{
+           				sprintf(bleRelayList[ind].bleInfo.version, "BR04_V%d.%d", (data[readInd + 4] >> 4) & 0xf, data[readInd + 4] & 0xf);
+           			}
+           			else
+           			{
+						sprintf(bleRelayList[ind].bleInfo.version, "BR06_V%d.%d", (data[readInd + 4] >> 4) & 0xf, data[readInd + 4] & 0xf);
+           			}
+	           		bleRelayList[ind].bleInfo.version[9] = 0;
+					LogPrintf(DEBUG_BLE, "^^BLE==>Dev(%d) ver:%s", ind, bleRelayList[ind].bleInfo.version);
 				}
+				else
+				{
+					
+				}
+				if (upgradeDevIndex() >= 0 && upgradeDevIndex() < DEVICE_MAX_CONNECT_COUNT)
+					updateUISVersion(bleRelayList[upgradeDevIndex()].bleInfo.version);
 				bleRelayClearReq(ind, BLE_EVENT_VERSION);
            		break;
            	case CMD_SET_TXPOWER:
@@ -915,9 +876,10 @@ void bleRelayRecvParser(uint16_t connHandle, uint8_t *data, uint8_t len)
            		break;
            	case CMD_OTA:
 				LogPrintf(DEBUG_UP, "^^BLE==>Dev(%d) enter ota", ind);
+				bleRelayDeleteAll();
+				sysparam.relayUpgrade[ind] = BLE_UPGRADE_FLAG;
 				bleRelayClearReq(ind, BLE_EVENT_OTA);
            		break;
-
         }
         readInd += size + 3;
     }

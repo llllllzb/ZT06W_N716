@@ -2531,7 +2531,7 @@ void doDebugRecvPoll(uint8_t *msg, uint16_t len)
 void myTaskPreInit(void)
 {
     tmos_memset(&sysinfo, 0, sizeof(sysinfo));
-	sysinfo.logLevel = 9;
+	sysinfo.logLevel = 6;
 
     SetSysClock(CLK_SOURCE_PLL_60MHz);
     portGpioSetDefCfg();
@@ -2552,7 +2552,13 @@ void myTaskPreInit(void)
     sysinfo.sysTaskId = createSystemTask(taskRunInSecond, 10);
     LogMessage(DEBUG_ALL, ">>>>>>>>>>>>>>>>>>>>>");
     LogPrintf(DEBUG_ALL, "¡¾%s¡¿SYS_GetLastResetSta:%x", VER_LIB, SYS_GetLastResetSta());
-
+//	for (uint8_t i = 0; i < DEVICE_MAX_CONNECT_COUNT; i++)
+//	{
+//		if (sysparam.relayUpgrade[i] == BLE_UPGRADE_FLAG)
+//		{
+//			sysinfo.updateStatus = 1;
+//		}
+//	}
 }
 
 /**************************************************
@@ -2577,6 +2583,8 @@ static tmosEvents myTaskEventProcess(tmosTaskID taskID, tmosEvents events)
     if (events & APP_TASK_KERNAL_EVENT)
     {
         kernalRun();
+        upgradeServerConnTask();
+        ledTask();
         return events ^ APP_TASK_KERNAL_EVENT;
     }
 
@@ -2601,15 +2609,15 @@ void myTaskInit(void)
     sysinfo.taskId = TMOS_ProcessEventRegister(myTaskEventProcess);
     tmos_start_reload_task(sysinfo.taskId, APP_TASK_KERNAL_EVENT, MS1_TO_SYSTEM_TIME(100));
     tmos_start_reload_task(sysinfo.taskId, APP_TASK_POLLUART_EVENT, MS1_TO_SYSTEM_TIME(50));
-    if (sysparam.bleen == 1)
-    {	
-    	char broadCastNmae[30];
-		sprintf(broadCastNmae, "%s-%s", "AUTO", dynamicParam.SN + 9);
-    	appPeripheralBroadcastInfoCfg(broadCastNmae);
-    }
-    else if (sysparam.bleen == 0)
-    {
-		appPeripheralCancel();
-    }
+//    if (sysparam.bleen == 1)
+//    {	
+//    	char broadCastNmae[30];
+//		sprintf(broadCastNmae, "%s-%s", "AUTO", dynamicParam.SN + 9);
+//    	appPeripheralBroadcastInfoCfg(broadCastNmae);
+//    }
+//    else if (sysparam.bleen == 0)
+//    {
+//		appPeripheralCancel();
+//    }
 }
 

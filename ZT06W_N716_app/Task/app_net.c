@@ -578,8 +578,8 @@ static void moduleExitFly(void)
 static void qirdCmdSend(uint8_t link)
 {
     char param[10];
-    sprintf(param, "%d,500", link);
-    moduleState.curQirdId = link;
+	sprintf(param, "%d,500", link);
+	moduleState.curQirdId = link;
     sendModuleCmd(TCPREAD_CMD, param);
 }
 
@@ -592,7 +592,6 @@ static void qirdCmdSend(uint8_t link)
 
 static void queryRecvBuffer(void)
 {
-    char param[10];
     if (moduleState.normalLinkQird)
     {
         qirdCmdSend(NORMAL_LINK);
@@ -612,6 +611,10 @@ static void queryRecvBuffer(void)
     else if (moduleState.hideLinkQird)
     {
         qirdCmdSend(HIDDEN_LINK);
+    }
+    else if (moduleState.upgradeQird)
+    {
+		qirdCmdSend(UPGRADE_LINK);
     }
 }
 
@@ -1215,6 +1218,9 @@ static void tcprecvParser(uint8_t *buf, uint16_t len)
 				case AGPS_LINK:
 					moduleState.agpsLinkQird = 1;
 					break;
+				case UPGRADE_LINK:
+					moduleState.upgradeQird = 1;
+					break;
 			}
 			rebuf += index + 1;
 			relen -= index + 1;
@@ -1290,14 +1296,16 @@ static void tcpreadParser(uint8_t *buf, uint16_t len)
 				少了两条数据，relen -= recvlen;会导致relen不够减,去到60000+
 				所以这里要求出实际剩余的长度
 			*/
-			char debug[257] = { 0 };
+			char debug[769] = { 0 };
 			recvlen = relen >= recvlen ? recvlen : relen;
+			LogPrintf(DEBUG_ALL, "Socket [%d] Recv %d bytes:", sockId, recvlen);
+			
 			socketRecv(sockId, rebuf, recvlen);
-			recvlen = recvlen > 128 ? 128 : recvlen;
+			recvlen = recvlen > 384 ? 384 : recvlen;
 			byteToHexString(rebuf, debug, recvlen);
 			debug[recvlen * 2] = 0;
-			LogPrintf(DEBUG_ALL, "Socket [%d] Recv %d bytes:", sockId, recvlen);
 			LogMessageWL(DEBUG_ALL, debug, recvlen * 2);
+
 			rebuf += index;
 			relen -= index;
 		}
@@ -1319,6 +1327,9 @@ static void tcpreadParser(uint8_t *buf, uint16_t len)
 					break;
 				case AGPS_LINK:
 					moduleState.agpsLinkQird   = 0;
+					break;
+				case UPGRADE_LINK:
+					moduleState.upgradeQird    = 0;
 					break;
 			}
 			LogPrintf(DEBUG_ALL, "Socket [%d] Recv done", sockId);
@@ -1562,6 +1573,7 @@ static void wifiapscanParser(uint8_t *buf, uint16_t len)
     }
 	if (wifiList.apcount != 0)
     {
+    	wifiRspSuccess();
 	    gpsinfo_s *gpsinfo;
 		gpsinfo = getCurrentGPSInfo();
 		//当前已经定到位置则不发送lbs
@@ -1581,7 +1593,7 @@ static void wifiapscanParser(uint8_t *buf, uint16_t len)
             protocolSend(BLE_LINK, PROTOCOL_F3, &wifiList);
         }
         sysinfo.wifiExtendEvt = 0;
-        wifiRspSuccess();
+        
         lbsRequestClear();
     }
 
@@ -1873,98 +1885,98 @@ void tcpsetupRspParser(uint8_t *buf, uint16_t len)
     index = my_getstrindex(rebuf, "+TCPSETUP: 0,OK", relen);
     if (index >= 0)
     {
-        socketSetConnState(0, SOCKET_CONN_SUCCESS);
+        socketSetConnState(NORMAL_LINK, SOCKET_CONN_SUCCESS);
         moduleCtrl.qiopenCount = 0;
     }
     index = my_getstrindex(rebuf, "+TCPSETUP: 1,OK", relen);
     if (index >= 0)
     {
-        socketSetConnState(1, SOCKET_CONN_SUCCESS);
+        socketSetConnState(BLE_LINK, SOCKET_CONN_SUCCESS);
     }
     index = my_getstrindex(rebuf, "+TCPSETUP: 2,OK", relen);
     if (index >= 0)
     {
-        socketSetConnState(2, SOCKET_CONN_SUCCESS);
+        socketSetConnState(JT808_LINK, SOCKET_CONN_SUCCESS);
         moduleCtrl.qiopenCount = 0;
     }
     index = my_getstrindex(rebuf, "+TCPSETUP: 3,OK", relen);
     if (index >= 0)
     {
-        socketSetConnState(3, SOCKET_CONN_SUCCESS);
+        socketSetConnState(HIDDEN_LINK, SOCKET_CONN_SUCCESS);
     }
     index = my_getstrindex(rebuf, "+TCPSETUP: 4,OK", relen);
     if (index >= 0)
     {
-        socketSetConnState(4, SOCKET_CONN_SUCCESS);
+        socketSetConnState(AGPS_LINK, SOCKET_CONN_SUCCESS);
     }
     index = my_getstrindex(rebuf, "+TCPSETUP: 5,OK", relen);
     if (index >= 0)
     {
-        socketSetConnState(5, SOCKET_CONN_SUCCESS);
+        socketSetConnState(UPGRADE_LINK, SOCKET_CONN_SUCCESS);
     }
 
     index = my_getstrindex(rebuf, "+TCPSETUP: 0,FAIL", relen);
     if (index >= 0)
     {
-        socketSetConnState(0, SOCKET_CONN_ERR);
+        socketSetConnState(NORMAL_LINK, SOCKET_CONN_ERR);
         moduleCtrl.qiopenCount++;
     }
     index = my_getstrindex(rebuf, "+TCPSETUP: 1,FAIL", relen);
     if (index >= 0)
     {
-        socketSetConnState(1, SOCKET_CONN_ERR);
+        socketSetConnState(BLE_LINK, SOCKET_CONN_ERR);
     }
     index = my_getstrindex(rebuf, "+TCPSETUP: 2,FAIL", relen);
     if (index >= 0)
     {
-        socketSetConnState(2, SOCKET_CONN_ERR);
+        socketSetConnState(JT808_LINK, SOCKET_CONN_ERR);
         moduleCtrl.qiopenCount++;
     }
     index = my_getstrindex(rebuf, "+TCPSETUP: 3,FAIL", relen);
     if (index >= 0)
     {
-        socketSetConnState(3, SOCKET_CONN_ERR);
+        socketSetConnState(HIDDEN_LINK, SOCKET_CONN_ERR);
     }
     index = my_getstrindex(rebuf, "+TCPSETUP: 4,FAIL", relen);
     if (index >= 0)
     {
-        socketSetConnState(4, SOCKET_CONN_ERR);
+        socketSetConnState(AGPS_LINK, SOCKET_CONN_ERR);
     }
     index = my_getstrindex(rebuf, "+TCPSETUP: 5,FAIL", relen);
     if (index >= 0)
     {
-        socketSetConnState(5, SOCKET_CONN_ERR);
+        socketSetConnState(UPGRADE_LINK, SOCKET_CONN_ERR);
     }
 
     index = my_getstrindex(rebuf, "+TCPSETUP: 0,ERROR1", relen);
     if (index >= 0)
     {
-        socketSetConnState(0, SOCKET_CONN_ERR);
+        socketSetConnState(NORMAL_LINK, SOCKET_CONN_ERR);
     }
     index = my_getstrindex(rebuf, "+TCPSETUP: 1,ERROR1", relen);
     if (index >= 0)
     {
-        socketSetConnState(1, SOCKET_CONN_ERR);
+        socketSetConnState(BLE_LINK, SOCKET_CONN_ERR);
     }
     index = my_getstrindex(rebuf, "+TCPSETUP: 2,ERROR1", relen);
     if (index >= 0)
     {
-        socketSetConnState(2, SOCKET_CONN_ERR);
+        socketSetConnState(JT808_LINK, SOCKET_CONN_ERR);
     }
     index = my_getstrindex(rebuf, "+TCPSETUP: 3,ERROR1", relen);
     if (index >= 0)
     {
-        socketSetConnState(3, SOCKET_CONN_ERR);
+        socketSetConnState(HIDDEN_LINK, SOCKET_CONN_ERR);
     }
     index = my_getstrindex(rebuf, "+TCPSETUP: 4,ERROR1", relen);
     if (index >= 0)
     {
-        socketSetConnState(4, SOCKET_CONN_ERR);
+        socketSetConnState(AGPS_LINK, SOCKET_CONN_ERR);
     }
     index = my_getstrindex(rebuf, "+TCPSETUP: 5,ERROR1", relen);
     if (index >= 0)
     {
-        socketSetConnState(5, SOCKET_CONN_ERR);
+        socketSetConnState(UPGRADE_LINK, SOCKET_CONN_ERR);
     }
 	if (moduleCtrl.qiopenCount >= 4)
 	{
@@ -2508,6 +2520,9 @@ void moduleRecvParser(uint8_t *buf, uint16_t bufsize)
                     case AGPS_LINK:
                         moduleState.agpsLinkQird = 0;
                         break;
+                    case UPGRADE_LINK:
+						moduleState.upgradeQird  = 0;
+                    	break;
                 }
                 LogPrintf(DEBUG_ALL, "Link[%d] recv err", moduleState.curQirdId);
             }

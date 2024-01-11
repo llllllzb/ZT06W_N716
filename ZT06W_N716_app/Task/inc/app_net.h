@@ -153,6 +153,7 @@ typedef struct
     uint8_t bleLinkQird 		: 1;
     uint8_t jt808LinkQird		: 1;
     uint8_t hideLinkQird		: 1;
+    uint8_t upgradeQird			: 1;
 
     uint8_t curQirdId;
     uint8_t rdyQirdId;

@@ -363,10 +363,11 @@ void appPeripheralInit(void)
     sprintf(broadCastNmae, "%s-%s", "AUTO", dynamicParam.SN + 9);
     appPeripheralBroadcastInfoCfg(broadCastNmae);
     //配置最短连接间隔
-    u16Value = 0x0006;    //6*1.25=7.5ms
+    u16Value = 20;    //6*1.25=7.5ms
     GAPRole_SetParameter(GAPROLE_MIN_CONN_INTERVAL, sizeof(uint16), &u16Value);
     //配置最长连接间隔
-    u16Value = 0x0c80;    //3200*1.25=4000ms
+    //<! 做主从二合一时候这里要和主机的一致，不然Update param有异常，read也有异常
+    u16Value = 100;    //3200*1.25=4000ms
     GAPRole_SetParameter(GAPROLE_MIN_CONN_INTERVAL, sizeof(uint16), &u16Value);
     //配置最短广播间隔
     //unit:0.625ms*160=100ms

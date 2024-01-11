@@ -1482,18 +1482,18 @@ void portWdtFeed(void)
 
 void portFclkChange(uint8_t type)
 {
-    if (type)
-    {
-    	SetSysClock(CLK_SOURCE_PLL_60MHz);
-    }
-    else
-    {
-        SetSysClock(CLK_SOURCE_HSE_16MHz);
-    }
-    //主频改变，修改波特率计算值
-    UART0_BaudRateCfg(115200);
-    UART1_BaudRateCfg(115200);
-    UART2_BaudRateCfg(115200);
-    UART3_BaudRateCfg(115200);
+//    if (type)
+//    {
+//    	SetSysClock(CLK_SOURCE_PLL_60MHz);
+//    }
+//    else
+//    {
+//        SetSysClock(CLK_SOURCE_HSE_16MHz);
+//    }
+//    //主频改变，修改波特率计算值
+//    UART0_BaudRateCfg(115200);
+//    UART1_BaudRateCfg(115200);
+//    UART2_BaudRateCfg(115200);
+//    UART3_BaudRateCfg(115200);
 }
 

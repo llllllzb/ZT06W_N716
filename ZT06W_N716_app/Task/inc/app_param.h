@@ -141,7 +141,7 @@ typedef struct
 	uint8_t bleMacCnt;
 	uint8_t txPower;
 	uint8_t relayUpgrade[2];
-	
+
 } systemParam_s;
 
 /*存在EEPROM里的动态参数*/

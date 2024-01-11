@@ -15,6 +15,7 @@
 #include "app_db.h"
 #include "app_jt808.h"
 #include "app_task.h"
+#include "app_central.h"
 
 static netConnectInfo_s privateServConn, bleServConn, hiddenServConn;
 static jt808_Connect_s jt808ServConn;
@@ -1087,8 +1088,6 @@ static void agpsServerConnTask(void)
 
 }
 
-
-
 /**************************************************
 @bref		继电器远程状态切换
 @param
@@ -1100,18 +1099,189 @@ void upgradeServerChangeFsm(UpgradeFsmState state)
 {
 	upgradeServConn.fsm     = state;
 	upgradeServConn.runTick = 0;
+	LogPrintf(DEBUG_UP, "%s==>%d", __FUNCTION__, state);
 }
+
+/**************************************************
+@bref		继电器远程数据接收
+@param
+@return
+@note
+**************************************************/
+
+static void upgradeServerSocketRecv(char *data, uint16_t len)
+{
+    uint16_t i, beginindex, contentlen, lastindex;
+    //遍历，寻找协议头
+    for (i = 0; i < len; i++)
+    {
+        beginindex = i;
+        if (data[i] == 0x78)
+        {
+            if (i + 1 >= len)
+            {
+                continue ;
+            }
+            if (data[i + 1] != 0x78)
+            {
+                continue ;
+            }
+            if (i + 2 >= len)
+            {
+                continue ;
+            }
+            contentlen = data[i + 2];
+            if ((i + 5 + contentlen) > len)
+            {
+                continue ;
+            }
+            if (data[i + 3 + contentlen] == 0x0D && data[i + 4 + contentlen] == 0x0A)
+            {
+                i += (4 + contentlen);
+                lastindex = i + 1;
+                //LogPrintf(DEBUG_ALL, "Fint it ====>Begin:7878[%d,%d]", beginindex, lastindex - beginindex);
+                protocolRxParser(UPGRADE_LINK, (char *)data + beginindex, lastindex - beginindex);
+            }
+        }
+        else if (data[i] == 0x79)
+        {
+            if (i + 1 >= len)
+            {
+                continue ;
+            }
+            if (data[i + 1] != 0x79)
+            {
+                continue ;
+            }
+            if (i + 3 >= len)
+            {
+                continue ;
+            }
+            contentlen = (uint8_t)data[i + 2] << 8 | (uint8_t)data[i + 3];
+            if ((i + 6 + contentlen) > len)
+            {
+            	LogPrintf(DEBUG_UP, "111:%d %d", i + 6 + contentlen, len);
+                continue ;
+            }
+            if ((uint8_t)data[i + 4 + contentlen] == 0x0D && (uint8_t)data[i + 5 + contentlen] == 0x0A)
+            {
+                i += (5 + contentlen);
+                lastindex = i + 1;
+                //LogPrintf(DEBUG_ALL, "Fint it ====>Begin:7979[%d,%d]", beginindex, lastindex - beginindex);
+                protocolRxParser(NORMAL_LINK, (char *)data + beginindex, lastindex - beginindex);
+            }
+        }
+
+    }
+}
+
+/**************************************************
+@bref		继电器升级开启
+@param
+@return
+@note
+**************************************************/
+
+void upgradeServerInit(uint8_t index)
+{
+	tmos_memset(&upgradeServConn, 0, sizeof(upgrade_Connect_s));
+	upgradeServerChangeFsm(NETWORK_LOGIN);
+	upgradeServConn.index = index;
+	LogPrintf(DEBUG_UP, "%s==>dev(%d)", __FUNCTION__, index);
+	sysinfo.updateStatus = 1;
+	updateUISInit(1);
+	otaRxInfoInit();
+}
+
+/**************************************************
+@bref		继电器升级关闭
+@param
+@return
+@note
+**************************************************/
+
+void upgradeServerCancel(void)
+{
+	tmos_memset(&upgradeServConn, 0, sizeof(upgrade_Connect_s));
+	upgradeServerChangeFsm(NETWORK_LOGIN);
+	sysinfo.updateStatus = 0;
+	updateUISInit(0);			//清空4G侧OTA数据情况
+	otaRxInfoInit();			//清空蓝牙侧数据情况
+	LogPrintf(DEBUG_UP, "%s==>Ok", __FUNCTION__);
+}
+
+/**************************************************
+@bref		远程服务器登陆成功
+@param
+@return
+@note
+**************************************************/
+
+void upgradeServerLoginSuccess(void)
+{
+	upgradeServConn.logintick  = 0;
+	upgradeServConn.loginCount = 0;
+	upgradeServerChangeFsm(NETWORK_LOGIN_READY);
+}
+
+int8_t upgradeDevIndex(void)
+{
+	if (sysinfo.updateStatus == 0)
+		return -1;
+	return upgradeServConn.index;
+}
+
+UpgradeFsmState getUpgradeServerFsm(void)
+{
+	return upgradeServConn.fsm;
+}
+
 
 /**************************************************
 @bref		继电器远程升级
 @param
 @return
 @note
+时基切换为 100ms
 **************************************************/
-
-static void upgradeServerConnTask(void)
+#define UPGRADE_TIMEBASE_MULTIPLE		10
+void upgradeServerConnTask(void)
 {
-	uint8_t cmd;
+	uint8_t cmd, i;
+	uint8_t index;
+	static uint8_t  dlErrCount = 0;
+    static uint32_t lastOffset = 0;
+	
+	if (sysinfo.updateStatus == 0)
+	{
+		if (socketGetUsedFlag(UPGRADE_LINK))
+		{
+			socketDel(UPGRADE_LINK);
+			upgradeServerCancel();
+		}
+		return;
+	}
+	if (isModuleRunNormal() == 0)
+	{
+		if (socketGetUsedFlag(UPGRADE_LINK))
+		{
+			socketDel(UPGRADE_LINK);
+			upgradeServerCancel();
+		}
+		return;
+	}
+	if (socketGetUsedFlag(UPGRADE_LINK) != 1)
+	{
+		socketAdd(UPGRADE_LINK, sysparam.upgradeServer, sysparam.upgradePort, upgradeServerSocketRecv);
+		upgradeServerChangeFsm(NETWORK_LOGIN);
+		return;
+	}
+    if (socketGetConnStatus(UPGRADE_LINK) != SOCKET_CONN_SUCCESS)
+    {
+    	upgradeServerChangeFsm(NETWORK_LOGIN);
+        LogMessage(DEBUG_UP, "wait upgrade server ready");
+        return;
+    }
 	
 	switch (upgradeServConn.fsm)
 	{
@@ -1124,7 +1294,7 @@ static void upgradeServerConnTask(void)
 			break;
 		/* 登录等待 */
 		case NETWORK_LOGIN_WAIT:
-			if (upgradeServConn.logintick++ >= 45)
+			if (upgradeServConn.logintick++ >= 45 * UPGRADE_TIMEBASE_MULTIPLE)
 			{
 				if (upgradeServConn.loginCount > 3)
 				{
@@ -1137,10 +1307,10 @@ static void upgradeServerConnTask(void)
 		/* 登录后获取新软件版本，未获取，每隔30秒重新获取 */
 		/* 超过3次失败，可能是平台的软件错误，可能是获取不到当前继电器的软件，均退出升级 */
 		case NETWORK_LOGIN_READY:
-			if (upgradeServConn.runTick++ % 30 == 0)
+			if (upgradeServConn.runTick++ % (30 * UPGRADE_TIMEBASE_MULTIPLE) == 0)
 			{
 				cmd = 1;
-				LogMessage(DEBUG_UP, "Get version");
+				LogPrintf(DEBUG_UP, "Get version,cnt:%d", upgradeServConn.getVerCount);
 				protocolSend(UPGRADE_LINK, PROTOCOL_UP, &cmd);
 				upgradeServConn.getVerCount++;
 				if (upgradeServConn.getVerCount > 3)
@@ -1162,37 +1332,109 @@ static void upgradeServerConnTask(void)
         /* 等下固件下载，超过20秒未收到数据，重新发送下载协议 */
         case NETWORK_DOWNLOAD_WAIT:
 			LogPrintf(DEBUG_UP, "Waitting firmware data...[%d]", upgradeServConn.runTick);
-            if (upgradeServConn.runTick++ > 20)
+            if (upgradeServConn.runTick++ > (20 * UPGRADE_TIMEBASE_MULTIPLE))
             {
                 upgradeServerChangeFsm(NETWORK_DOWNLOAD_DOING);
             }
         	break;
-        /* 等待继电器返回软件版本号 */
+        /* 将继电器切换为iap */
         case NETWORK_MCU_START_UPGRADE:
-			
+			bleRelayClearReq(upgradeServConn.index, BLE_EVENT_ALL);
+            bleRelaySetReq(upgradeServConn.index, BLE_EVENT_OTA);
+            sysparam.relayUpgrade[upgradeServConn.index] = BLE_UPGRADE_FLAG;
+            paramSaveAll();
+            upgradeServerChangeFsm(NETWORK_MCU_CONNECT);
         	break;
-        case NETWORK_MCU_EARSE:
-			LogMessage(DEBUG_UP, "Mcu earse");
-			
-        	upgradeServerChangeFsm(NETWORK_DOWNLOAD_DOING);
+       	/* 等待连接继电器OTA程序成功 */
+        case NETWORK_MCU_CONNECT:
+        	/* 蓝牙断连处理 */
+        	if (bleDevGetOtaStatusByIndex(upgradeServConn.index) && getBleOtaFsm() == BLE_OTA_FSM_IDLE)
+        	{
+        		bleOtaFsmChange(BLE_OTA_FSM_INFO);
+				bleOtaSend();
+				upgradeServerChangeFsm(NETWORK_MCU_WAIT);
+        	}
+			else
+			{
+				if (upgradeServConn.runTick++ > (180 * UPGRADE_TIMEBASE_MULTIPLE))
+				{
+					LogPrintf(DEBUG_UP, "Upgrade ble connect error,cancel ble upgrade");
+					upgradeServerChangeFsm(NETWORK_DOWNLOAD_END);
+				}
+			}
         	break;
+        /* 等待MCU升级之前数据交互完成 */
+        case NETWORK_MCU_WAIT:
+        	/* 蓝牙断连处理 */
+        	if (bleDevGetOtaStatusByIndex(upgradeServConn.index) && getBleOtaFsm() == BLE_OTA_FSM_IDLE)
+        	{
+        		bleOtaFsmChange(BLE_OTA_FSM_INFO);
+				bleOtaSend();
+        	}
+			if (upgradeServConn.runTick++ > (180 * UPGRADE_TIMEBASE_MULTIPLE))
+			{
+				LogPrintf(DEBUG_UP, "Upgrade ble info error,cancel ble upgrade");
+				upgradeServerChangeFsm(NETWORK_DOWNLOAD_END);
+			}
+        	break;
+        /* 软件蓝牙传输，等待20s */
         case NETWORK_FIRMWARE_WRITE_DOING:
-			
+        	/* 蓝牙断连处理 */
+            if (bleDevGetOtaStatusByIndex(upgradeServConn.index) && getBleOtaFsm() == BLE_OTA_FSM_IDLE)
+        	{
+        		bleOtaFsmChange(BLE_OTA_FSM_PROM);
+				bleOtaSend();
+        	}
+			if (upgradeServConn.runTick++ > (180 * UPGRADE_TIMEBASE_MULTIPLE))
+			{
+				LogPrintf(DEBUG_UP, "Upgrade ble prom error,cancel ble upgrade");
+				upgradeServerChangeFsm(NETWORK_DOWNLOAD_END);
+			}
         	break;
         case NETWORK_DOWNLOAD_DONE:
-
+			LogMessage(DEBUG_ALL, "Ble Download firmware complete!\n");
+			cmd = 3;
+            protocolSend(UPGRADE_LINK, PROTOCOL_UP, &cmd);
+            upgradeServerChangeFsm(NETWORK_MCU_COMPLETE);
         	break;
-        case NETWORK_UPGRAD_NOW:
-
+        case NETWORK_MCU_COMPLETE:
+			bleOtaFsmChange(BLE_OTA_FSM_END);
+			bleOtaSend();
+			upgradeServerChangeFsm(NETWORK_WAIT_JUMP);
         	break;
         case NETWORK_DOWNLOAD_ERROR:
-
+            LogMessage(DEBUG_ALL, "Download error\r\n");
+            upgradeServerChangeFsm(NETWORK_DOWNLOAD_DOING);
+//            if (lastOffset != uis.rxfileOffset)
+//            {
+//                LogMessage(DEBUG_ALL, "Diff offset\r\n");
+//                lastOffset = uis.rxfileOffset;
+//                dlErrCount = 0;
+//            }
+//            dlErrCount++;
+//            if (dlErrCount >= 5)
+//            {
+//                LogMessage(DEBUG_ALL, "Download end\r\n");
+//                protocolFsmStateChange(NETWORK_DOWNLOAD_END);
+//            }
         	break;
+        /* 等待MCU跳回APP */
         case NETWORK_WAIT_JUMP:
-
+        	/* 蓝牙断连处理 */
+			if (bleDevGetOtaStatusByIndex(upgradeServConn.index) && getBleOtaFsm() == BLE_OTA_FSM_IDLE)
+			{
+				bleOtaFsmChange(BLE_OTA_FSM_END);
+				bleOtaSend();
+			}
+			if (upgradeServConn.runTick++ > (180 * UPGRADE_TIMEBASE_MULTIPLE))
+			{
+				LogPrintf(DEBUG_UP, "Upgrade ble end error,cancel ble upgrade");
+				upgradeServerChangeFsm(NETWORK_DOWNLOAD_END);
+			}
         	break;
         case NETWORK_DOWNLOAD_END:
-            
+        	socketDel(UPGRADE_LINK);
+            upgradeServerCancel();
             break;
 	}
 }
@@ -1265,4 +1507,23 @@ uint8_t hiddenServerIsReady(void)
         return 0;
     return 1;
 }
+
+/**************************************************
+@bref		判断升级服务器是否登录正常
+@param
+@return
+@note
+**************************************************/
+
+uint8_t upgradeServerIsReady(void)
+{
+    if (isModuleRunNormal() == 0)
+        return 0;
+    if (socketGetConnStatus(UPGRADE_LINK) != SOCKET_CONN_SUCCESS)
+        return 0;
+    if (upgradeServConn.fsm < NETWORK_LOGIN_READY)
+        return 0;
+    return 1;
+}
+
 

@@ -14,6 +14,7 @@
 #include "app_peripheral.h"
 #include "app_db.h"
 #include "app_jt808.h"
+#include "app_central.h"
 
 static uint8_t instructionid[4];
 static uint8_t bleinstructionid[4];
@@ -979,13 +980,13 @@ void updateUISInit(uint8_t object)
     uis.updateObject = object;
     if (uis.updateObject)
     {
-        uis.file_len = 244;
+        uis.file_len = 240;
         LogPrintf(DEBUG_UP, "Preparing to start the upgrade relay..");
     }
     else
     {
-        memset(&uis, 0, sizeof(UndateInfoStruct));
-        LogPrintf(DEBUG_UP, "Unknow upgrade object");
+        tmos_memset(&uis, 0, sizeof(UndateInfoStruct));
+        LogPrintf(DEBUG_UP, "Uis clear");
     }
 }
 
@@ -999,7 +1000,7 @@ void updateUISInit(uint8_t object)
 void updateUISVersion(uint8_t *version)
 {
 	strncpy(uis.curCODEVERSION, version, 50);
-	LogPrintf(DEBUG_UP, "updateUISVersion==>current version[%s]", uis.curCODEVERSION);
+	LogPrintf(DEBUG_UP, "updateUISVersion==>Current version[%s]", uis.curCODEVERSION);
 }
 
 /**************************************************
@@ -1025,21 +1026,22 @@ static int createUpdateProtocol(char *IMEI, unsigned short Serial, char *dest, u
         pdu_len += strlen(IMEI);
         //版本号长度
         dest[pdu_len++] = strlen(uis.curCODEVERSION);
-        //拷贝SN号
+        //拷贝版本号
         memcpy(dest + pdu_len, uis.curCODEVERSION, strlen(uis.curCODEVERSION));
         pdu_len += strlen(uis.curCODEVERSION);
+        
     }
     else if (cmd == 0x02)
     {
         dest[pdu_len++] = (uis.file_id >> 24) & 0xFF;
         dest[pdu_len++] = (uis.file_id >> 16) & 0xFF;
-        dest[pdu_len++] = (uis.file_id >> 8) & 0xFF;
+        dest[pdu_len++] = (uis.file_id >> 8)  & 0xFF;
         dest[pdu_len++] = (uis.file_id) & 0xFF;
 
         //文件偏移位置
         dest[pdu_len++] = (uis.rxfileOffset >> 24) & 0xFF;
         dest[pdu_len++] = (uis.rxfileOffset >> 16) & 0xFF;
-        dest[pdu_len++] = (uis.rxfileOffset >> 8) & 0xFF;
+        dest[pdu_len++] = (uis.rxfileOffset >> 8)  & 0xFF;
         dest[pdu_len++] = (uis.rxfileOffset) & 0xFF;
 
         readfilelen = uis.file_totalsize - uis.rxfileOffset; //得到剩余未接收大小
@@ -1050,7 +1052,7 @@ static int createUpdateProtocol(char *IMEI, unsigned short Serial, char *dest, u
         //文件读取长度
         dest[pdu_len++] = (readfilelen >> 24) & 0xFF;
         dest[pdu_len++] = (readfilelen >> 16) & 0xFF;
-        dest[pdu_len++] = (readfilelen >> 8) & 0xFF;
+        dest[pdu_len++] = (readfilelen >> 8)  & 0xFF;
         dest[pdu_len++] = (readfilelen) & 0xFF;
     }
     else if (cmd == 0x03)
@@ -1341,6 +1343,10 @@ static void protoclparase01(uint8_t link, char *protocol, int size)
     {
         hiddenServerLoginSuccess();
     }
+    else if (link == UPGRADE_LINK)
+    {
+		upgradeServerLoginSuccess();
+    }
 }
 
 /**************************************************
@@ -1435,6 +1441,57 @@ void protoclParser16(uint8_t link, char *protocol, int size)
     serial = protocol[4] << 8 | protocol[5];
 }
 
+uint32_t getFileTotalSize(void)
+{
+	return uis.file_totalsize;
+}
+
+uint32_t getRxfileOffset(void)
+{
+	return uis.rxfileOffset;
+}
+
+/**************************************************
+@bref		执行升级
+@param
+@return
+@note
+**************************************************/
+
+void upgradeResultProcess(uint8_t upgradeResult, uint32_t offset, uint32_t size)
+{
+    if (upgradeResult == 0)
+    {
+        uis.rxfileOffset = offset + size;
+        LogPrintf(DEBUG_ALL, "upgradeResultProcess==>uis.rxfileOffset:%d", uis.rxfileOffset);
+        LogPrintf(DEBUG_ALL, ">>>>>>>>>> Completed progress %.1f%% <<<<<<<<<<",
+                  ((float)uis.rxfileOffset / uis.file_totalsize) * 100);
+        if (uis.rxfileOffset == uis.file_totalsize)
+        {
+            uis.updateOK = 1;
+            upgradeServerChangeFsm(NETWORK_DOWNLOAD_DONE);
+        }
+        //测试这个
+        else if (uis.rxfileOffset > uis.file_totalsize)
+        {
+            LogMessage(DEBUG_ALL, "Recevie complete ,but total size is different,retry again\n");
+            uis.rxfileOffset = 0;
+            upgradeServerChangeFsm(NETWORK_LOGIN);
+            bleOtaFsmChange(BLE_OTA_FSM_INFO);
+        }
+        else
+        {
+            upgradeServerChangeFsm(NETWORK_DOWNLOAD_DOING);
+        }
+    }
+    else
+    {
+        LogPrintf(DEBUG_ALL, "Writing firmware error at 0x%X\n", uis.rxfileOffset);
+        upgradeServerChangeFsm(NETWORK_DOWNLOAD_ERROR);
+    }
+
+}
+
 /**************************************************
 @bref		升级协议
 @param
@@ -1442,7 +1499,7 @@ void protoclParser16(uint8_t link, char *protocol, int size)
 @note
 **************************************************/
 
-static void protocolParserUpdate(char *protocol, int size)
+static void protocolParserUpdate(uint8_t link, uint8_t *protocol, int size)
 {
     uint8_t cmd, snlen, myversionlen, newversionlen;
     uint16_t index, filecrc, calculatecrc;
@@ -1450,13 +1507,15 @@ static void protocolParserUpdate(char *protocol, int size)
     char *codedata;
     ota_package_t ota_pack;
     int ret;
+    int ind;
     cmd = protocol[5];
+    //LogPrintf(DEBUG_UP, "cmd:%d  %d %d %d %d ", cmd, protocol[0], protocol[1], protocol[2], protocol[3]);
     if (cmd == 0x01)
     {
         //判断是否有更新文件
         if (protocol[6] == 0x01)
         {
-            uis.file_id = (protocol[7] << 24 | protocol[8] << 16 | protocol[9] << 8 | protocol[10]);
+            uis.file_id        = (protocol[7]  << 24 | protocol[8]  << 16 | protocol[9]  << 8 | protocol[10]);
             uis.file_totalsize = (protocol[11] << 24 | protocol[12] << 16 | protocol[13] << 8 | protocol[14]);
             snlen = protocol[15];
             index = 16;
@@ -1500,23 +1559,33 @@ static void protocolParserUpdate(char *protocol, int size)
                 ota_pack.len    = 0;
                 ota_pack.offset = 0;
                 /* 平台升级文件导入时必须按照格式命名版本号：BR0x_Vx.x */
-                index = my_getstrindex(uis.newCODEVERSION, "BR", newversionlen);
-                if (index >= 0)
+                ind = my_getstrindex(uis.newCODEVERSION, "BR", newversionlen);
+                if (ind >= 0)
                 {
-                    LogPrintf(DEBUG_UP, "Compare==>FileVer:BR[0%d]_V[%d.%d] currenVer:BR[0%d]_V[%d.%d]", 
-					                    uis.newCODEVERSION[index + 3], 
-					                    uis.newCODEVERSION[index + 6], 
-					                    uis.newCODEVERSION[index + 8], 
-					                    uis.curCODEVERSION[3],
-					                    uis.curCODEVERSION[6],
-					                    uis.curCODEVERSION[8]);
-                    if (uis.newCODEVERSION[index + 3] == uis.curCODEVERSION[3] &&
-                    	uis.newCODEVERSION[index + 6] == uis.curCODEVERSION[6] &&
-                    	uis.newCODEVERSION[index + 8] == uis.curCODEVERSION[8])
-                    {
-		                LogPrintf(DEBUG_UP, "File validation OK");
-                    	upgradeServerChangeFsm(NETWORK_MCU_START_UPGRADE);
-                    }
+                    LogPrintf(DEBUG_UP, "File validation OK, Compare==>FileVer:%s currentVer:%s", 
+									                     uis.newCODEVERSION, uis.curCODEVERSION);
+					/* 以下是版本号即设备类型的校验，可加可不加 */
+//                    if (strncmp(uis.newCODEVERSION, uis.curCODEVERSION, newversionlen) == 0)
+//                    {
+//		                LogPrintf(DEBUG_UP, "Version same, cancel ble upgrade");
+//                    	upgradeServerChangeFsm(NETWORK_DOWNLOAD_END);
+//                    }
+//                    else if (uis.newCODEVERSION[ind + 3] != uis.curCODEVERSION[3])
+//                    {
+//						LogPrintf(DEBUG_UP, "Dev type validation fail,cancel relay upgrade");
+//						upgradeServerChangeFsm(NETWORK_DOWNLOAD_END);
+//                    }
+//                    else if (uis.newCODEVERSION[ind + 3] == uis.curCODEVERSION[3])
+//                    {
+//                    	LogPrintf(DEBUG_UP, "Dev type validation ok");
+//						upgradeServerChangeFsm(NETWORK_MCU_START_UPGRADE);
+//                    }
+//                    else
+//                    {
+//						LogPrintf(DEBUG_UP, "Waitting relay version");
+//                    }
+					upgradeServerChangeFsm(NETWORK_MCU_START_UPGRADE);
+
                 }
                 /* 如果BR头都找不到，退出升级 */
                 else
@@ -1536,10 +1605,10 @@ static void protocolParserUpdate(char *protocol, int size)
     {
         if (protocol[6] == 1)
         {
-            rxfileoffset = (protocol[7] << 24 | protocol[8] << 16 | protocol[9] << 8 | protocol[10]); //文件偏移
-            rxfilelen = (protocol[11] << 24 | protocol[12] << 16 | protocol[13] << 8 | protocol[14]); //文件大小
+            rxfileoffset = (protocol[7]  << 24 | protocol[8]  << 16 | protocol[9]  << 8 | protocol[10]); //文件偏移
+            rxfilelen    = (protocol[11] << 24 | protocol[12] << 16 | protocol[13] << 8 | protocol[14]); //文件大小
             calculatecrc = GetCrc16(protocol + 2, size - 6); //文件校验
-            filecrc = (*(protocol + 15 + rxfilelen + 2) << 8) | (*(protocol + 15 + rxfilelen + 2 + 1));
+            filecrc      = (*(protocol + 15 + rxfilelen + 2) << 8) | (*(protocol + 15 + rxfilelen + 2 + 1));
             if (rxfileoffset < uis.rxfileOffset)
             {
                 LogMessage(DEBUG_UP, "Receive the same firmware");
@@ -1552,11 +1621,12 @@ static void protocolParserUpdate(char *protocol, int size)
                 codedata = protocol + 15;
 
                 ota_pack.offset = rxfileoffset;
-                ota_pack.len = rxfilelen;
-                ota_pack.data = (uint8_t *)codedata;
+                ota_pack.len    = rxfilelen;
+                ota_pack.data   = (uint8_t *)codedata;
+                LogPrintf(DEBUG_UP, "rxfileoffset:%d  rxfilelen:%d", rxfileoffset, rxfilelen);
                 upgradeServerChangeFsm(NETWORK_FIRMWARE_WRITE_DOING);
                 //添加：把数据放入主机蓝牙发送区
-				
+				bleOtaFilePackage(ota_pack);
             }
             else
             {
@@ -1604,9 +1674,11 @@ void protocolRxParser(uint8_t link, char *protocol, uint16_t size)
     }
     else if (protocol[0] == 0X79 && protocol[1] == 0X79)
     {
-		switch ((uint8_t)protocol[3])
+		switch ((uint8_t)protocol[4])
 		{
-			
+		    case 0xF3:
+		        protocolParserUpdate(link, protocol, size);
+		    break;
 		}
     }
 }

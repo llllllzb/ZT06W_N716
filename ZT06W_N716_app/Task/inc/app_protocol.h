@@ -107,6 +107,8 @@ void getLastInsid(void);
 void setLastInsid(void);
 void createProtocolA0(char *DestBuf, uint16_t *len);
 
+uint32_t getFileTotalSize(void);
+uint32_t getRxfileOffset(void);
 
 void updateUISInit(uint8_t object);
 void updateUISVersion(uint8_t *version);
@@ -114,7 +116,7 @@ void updateUISVersion(uint8_t *version);
 void gpsRestoreUpload(void);
 
 void updateHistoryGpsTime(gpsinfo_s *gpsinfo);
-
+void upgradeResultProcess(uint8_t upgradeResult, uint32_t offset, uint32_t size);
 void protocolSnRegister(char *sn);
 void protocolInfoResiter(uint8_t batLevel, float vol, uint16_t sCnt, uint16_t runCnt);
 

@@ -835,8 +835,9 @@ void doDebugInstrucion(ITEM *item, char *message)
             sysinfo.sysTick / 3600, sysinfo.sysTick % 3600 / 60, sysinfo.sysTick % 60, sysinfo.gpsRequest,
             sysinfo.gpsUpdatetick / 3600, sysinfo.gpsUpdatetick % 3600 / 60, sysinfo.gpsUpdatetick % 60);
     sprintf(message + strlen(message), "hideLogin:%s;", hiddenServerIsReady() ? "Yes" : "No");
-    sprintf(message + strlen(message), "moduleRstCnt:%d;", sysinfo.moduleRstCnt);
     sprintf(message + strlen(message), "bleConnStatus[%s]:%s", sysinfo.bleConnStatus ? "CONNECTED" : "DISCONNECTED", appPeripheralParamCallback());
+    sprintf(message + strlen(message), "upgrade server:%s serverfsm:%d blefsm:%d bleupgrade:%d  %d", 
+    	upgradeServerIsReady() ? "Yes" : "No", getUpgradeServerFsm(), getBleOtaFsm(), sysparam.relayUpgrade[0], sysparam.relayUpgrade[1]);
 }
 
 void doACCCTLGNSSInstrucion(ITEM *item, char *message)
@@ -1276,6 +1277,7 @@ static void doSetBleMacInstruction(ITEM *item, char *message)
     {
         bleRelayDeleteAll();
         tmos_memset(sysparam.bleConnMac, 0, sizeof(sysparam.bleConnMac));
+        sysparam.bleMacCnt = 0;
         ind = 0;
         strcpy(message, "Enable ble function,Update MAC: ");
         for (i = 1; i < item->item_cnt; i++)
@@ -1971,12 +1973,23 @@ BLEUPS,99	//È¡Ïû
 static void doBleUPSInstruction(ITEM *item, char *message)
 {
 	uint8_t i;
+	bleRelayInfo_s *bleinfo;
 	if (item->item_data[1][0] == 0 || item->item_data[1][0] == '?')
 	{
-		strcpy(message, "Please enter ble ups param");
+		if (sysinfo.updateStatus)
+		{
+			LogPrintf(DEBUG_ALL, ">>>>>>>>>> Completed progress %.1f%% <<<<<<<<<<",
+                  ((float)getRxfileOffset() / getFileTotalSize()) * 100);
+		}
+		else
+		{
+			strcpy(message, "Please enter ble ups param");
+		}
 	}
 	else
 	{
+		uint8_t index; 
+		index = atoi(item->item_data[4]);
 		if (atoi(item->item_data[1]) == 99)
 		{
 			for (i = 0; i < DEVICE_MAX_CONNECT_COUNT; i++)
@@ -1984,37 +1997,40 @@ static void doBleUPSInstruction(ITEM *item, char *message)
 				if (sysparam.relayUpgrade[i] == BLE_UPGRADE_FLAG)
 				{
 					bleRelayDeleteAll();
+					upgradeServerCancel();
 					//startTimer(100, setBleMacCallback, 0);
 					sysparam.relayUpgrade[i] = 0;
 				}
 			}
+			sysinfo.updateStatus = 0;
 			strcpy(message, "Ble ups cancel");
 		}
 		else
 		{
-			for (i = 0; i < DEVICE_MAX_CONNECT_COUNT; i++)
+			if (sysinfo.updateStatus)
 			{
-				if (sysparam.relayUpgrade[i] == BLE_UPGRADE_FLAG)
-				{
-					sprintf(message, "Dev(%d) is being upgraded, please try it again ", i);
-					return;
-				}
+				sprintf(message, "Upgrade server is already open");
+				return;
 			}
-			uint8_t index; 
-			index = atoi(item->item_data[4]);
+
 			if (index >= DEVICE_MAX_CONNECT_COUNT)
 			{
 				strcpy(message, "Dev number is error");
 				return;
 			}
+			sysinfo.updateStatus = 1;
 			strncpy(sysparam.upgradeServer, item->item_data[2], 50);
 			sysparam.upgradeServer[49] = 0;
 			sysparam.upgradePort = atoi(item->item_data[3]);
-			sysparam.relayUpgrade[index] = BLE_UPGRADE_FLAG;
 			sprintf(message, "Ble device will download the firmware from %s:%d in 5 seconds", sysparam.upgradeServer,
             sysparam.upgradePort);
-            bleRelayClearReq(index, BLE_EVENT_ALL);
-            bleRelaySetReq(index, BLE_EVENT_OTA);
+        	bleinfo = bleRelayGeInfo(index);
+        	
+        	if (bleinfo != NULL)
+        	{
+				updateUISVersion(bleinfo->version);
+				upgradeServerInit(index);
+        	}
 		}
 		paramSaveAll();
 	}

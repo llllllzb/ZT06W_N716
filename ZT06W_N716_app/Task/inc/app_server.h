@@ -21,20 +21,21 @@ typedef enum
 
 typedef enum
 {
-    NETWORK_LOGIN,
-    NETWORK_LOGIN_WAIT,
-    NETWORK_LOGIN_READY,
+    NETWORK_LOGIN,					//0
+    NETWORK_LOGIN_WAIT,				//1
+    NETWORK_LOGIN_READY,			//2
 
 
-    NETWORK_DOWNLOAD_DOING,
-    NETWORK_DOWNLOAD_WAIT,
+    NETWORK_DOWNLOAD_DOING,			//3
+    NETWORK_DOWNLOAD_WAIT,			//4
     
-	NETWORK_MCU_START_UPGRADE,
-	NETWORK_MCU_EARSE,
-    NETWORK_FIRMWARE_WRITE_DOING,
+	NETWORK_MCU_START_UPGRADE,		//5
+	NETWORK_MCU_CONNECT,			//6
+	NETWORK_MCU_WAIT,				//7
+    NETWORK_FIRMWARE_WRITE_DOING,	//8
 
-    NETWORK_DOWNLOAD_DONE,
-    NETWORK_UPGRAD_NOW,
+    NETWORK_DOWNLOAD_DONE,			//9
+    NETWORK_MCU_COMPLETE,			//10
     NETWORK_DOWNLOAD_ERROR,
     NETWORK_WAIT_JUMP,
     NETWORK_DOWNLOAD_END
@@ -77,10 +78,11 @@ typedef struct
 typedef struct
 {
 	UpgradeFsmState fsm;
-	uint8_t 		logintick;
+	uint16_t 		logintick;
 	uint8_t 		loginCount;
 	uint8_t         getVerCount;
-	uint8_t 		runTick;
+	uint16_t 		runTick;
+	uint8_t 		index;
 	
 }upgrade_Connect_s;
 
@@ -105,10 +107,17 @@ void bleSerLoginReady(void);
 
 void agpsRequestSet(void);
 void agpsRequestClear(void);
+void upgradeServerInit(uint8_t index);
+void upgradeServerCancel(void);
+void upgradeServerLoginSuccess(void);
+int8_t upgradeDevIndex(void);
+UpgradeFsmState getUpgradeServerFsm(void);
 void upgradeServerChangeFsm(UpgradeFsmState state);
 
 uint8_t primaryServerIsReady(void);
 uint8_t hiddenServerIsReady(void);
+uint8_t upgradeServerIsReady(void);
+void upgradeServerConnTask(void);
 
 void serverManageTask(void);
 

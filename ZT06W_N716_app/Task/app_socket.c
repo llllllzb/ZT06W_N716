@@ -7,7 +7,7 @@
 #include "app_sys.h"
 #include "app_net.h"
 #include "app_socket.h"
-#define SOCKET_LIST_MAX_SIZE    5
+#define SOCKET_LIST_MAX_SIZE    6
 
 SocketInfo_s socketList[SOCKET_LIST_MAX_SIZE];
 SocketScheduleInfo_s sockSchInfo;
@@ -59,6 +59,7 @@ int8_t socketAdd(uint8_t sock, char *server, uint16_t port, void(*recvCb)(char *
     socketList[sock].port = port;
     socketList[sock].recvCallBack = recvCb;
     socketList[sock].usedFlag = 1;
+    LogPrintf(DEBUG_ALL, "Add socket[%d]", socketList[sock].socketId);
     return 1;
 }
 

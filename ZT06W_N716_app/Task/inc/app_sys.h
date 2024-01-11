@@ -63,6 +63,7 @@ typedef struct
 	uint8_t jt808Lbs				: 1;
     uint8_t jt808Wifi				: 1;
 	uint8_t ephemerisFlag			: 1;
+	uint8_t updateStatus			: 1;
     uint8_t lbsExtendEvt;
     uint8_t wifiExtendEvt;
     uint8_t ringWakeUpTick;

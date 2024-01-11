@@ -10,6 +10,7 @@
 
 #include "config.h"
 #include "app_bleRelay.h"
+#include "app_protocol.h"
 
 //通用继电器UUID
 #define SERVICE_UUID                    0xFFE0
@@ -21,18 +22,19 @@
 
 #define DEVICE_MAX_CONNECT_COUNT        2
 
+//OTA起始地址
+#define IMAGE_A_START_ADD			    0x1000
+
 #define BLE_TASK_START_EVENT            0x0001
 #define BLE_TASK_NOTIFYEN_EVENT         0x0002
 #define BLE_TASK_SCHEDULE_EVENT         0x0004
 #define BLE_TASK_SVC_DISCOVERY_EVENT	0x0008
 #define BLE_TASK_TERMINATE_EVENT		0x0010
 #define BLE_TASK_READ_RSSI_EVENT		0x0020
-#define BLE_TASK_OTA_INFO_EVENT			0x0040
-#define BLE_TASK_OTA_PROM_EVENT			0x0080
-#define BLE_TASK_OTA_EARSE_EVENT		0x0100
-#define BLE_TASK_OTA_VERIFY_EVENT		0x0200
-#define BLE_TASK_OTA_READ_EVENT			0x0400
+#define BLE_TASK_OTA_WRITE_EVENT		0x0040
+#define BLE_TASK_OTA_READ_EVENT			0x0080
 #define BLE_TASK_UPDATE_PARAM_EVENT		0x1000
+#define BLE_TASK_UPDATE_MTU_EVENT		0x2000
 
 #define BLE_ID_0						0
 #define BLE_ID_1						1
@@ -57,6 +59,7 @@ typedef struct
     uint8_t  findCharDone	 :1;
     uint8_t  notifyDone      :1;	//这个可以作为ota还是normal的标志
     uint8_t  use             :1;
+    uint8_t  otaStatus		 :1;
     uint8_t  addr[6];
     uint8_t  addrType;
     uint16_t connHandle;
@@ -102,6 +105,8 @@ typedef enum
 	BLE_OTA_FSM_EASER,
 	BLE_OTA_FSM_PROM,
 	BLE_OTA_FSM_VERI,
+	BLE_OTA_FSM_END,
+	BLE_OTA_FSM_FINISH,
 }ble_ota_fsm_e;
 
 
@@ -125,13 +130,22 @@ static void bleDevDiscoverServByUuid(void);
 int bleDevGetIdByHandle(uint16_t connHandle);
 deviceConnInfo_s *bleDevGetInfoById(uint8_t id);
 void bleDevReadAllRssi(void);
-
+int bleDevGetOtaStatusByIndex(uint8_t index);
 int8_t bleDevConnAdd(uint8_t *addr, uint8_t addrType);
 int8_t bleDevConnDel(uint8_t *addr);
 void bleDevConnDelAll(void);
+void bleOtaFsmChange(ble_ota_fsm_e fsm);
+void otaRxInfoInit(void);
 
 void bleOtaInit(void);
+ble_ota_fsm_e getBleOtaFsm(void);
+void bleOtaSend(void);
+void bleOtaFilePackage(ota_package_t file);
+void bleConnTypeChange(uint8_t type, uint8_t index);
+
+
 void bleOtaReadDataParser(uint16_t connHandle, OTA_IAP_CMD_t iap_read_data, uint16_t len);
+uint8_t bleOtaSendProtocol(uint16_t connHandle, uint16_t charHandle);
 
 
 #endif /* APP_INCLUDE_APP_CENTRAL_H_ */
