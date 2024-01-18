@@ -955,7 +955,15 @@ void alarmRequestTask(void)
         alarm = 0x17;
         protocolSend(NORMAL_LINK, PROTOCOL_16, &alarm);
     }
-
+    //快速预报警
+    if (sysinfo.alarmRequest & ALARM_FAST_PERSHIELD_REQUEST)
+	{
+		alarmRequestClear(ALARM_FAST_PERSHIELD_REQUEST);
+        LogMessage(DEBUG_ALL, "alarmUploadRequest==>BLE fast shield Alarm");
+        alarm = 0x38;
+        protocolSend(NORMAL_LINK, PROTOCOL_16, &alarm);
+        sysinfo.fastGap = sysinfo.sysTick;
+	}
     //蓝牙预警报警
     if (sysinfo.alarmRequest & ALARM_PREWARN_REQUEST)
     {
@@ -2394,7 +2402,7 @@ static void lightDetectionTask(void)
     uint8_t curLdrState;
     curLdrState = LDR2_READ;
 
-    if (curLdrState)
+    if (curLdrState == 0)
     {
         //亮
         if (darknessTick >= 60)
@@ -2415,7 +2423,7 @@ static void lightDetectionTask(void)
 
     //前感光检测
     curLdrState = LDR1_READ;
-    if (curLdrState)
+    if (curLdrState == 0)
     {
         //亮
         if (FrontdarknessTick >= 60)
@@ -2474,7 +2482,7 @@ void taskRunInSecond(void)
     gsCheckTask();
     gpsRequestTask();
     voltageCheckTask();
-    alarmRequestTask();
+    
     gpsUplodOnePointTask();
     lbsRequestTask();
     wifiRequestTask();
@@ -2484,7 +2492,6 @@ void taskRunInSecond(void)
 	autoSleepTask();
 	relayAutoCtrlTask();
 	uartCloseTask();
-	
 }
 
 
@@ -2547,18 +2554,14 @@ void myTaskPreInit(void)
     paramInit();
     relayInit();
     socketListInit();
-    createSystemTask(ledTask, 1);
     createSystemTask(outputNode, 2);
+    //3秒运行一次可以过滤 3秒内一起重复的报警
+    createSystemTask(alarmRequestTask, 30);
+    
     sysinfo.sysTaskId = createSystemTask(taskRunInSecond, 10);
     LogMessage(DEBUG_ALL, ">>>>>>>>>>>>>>>>>>>>>");
     LogPrintf(DEBUG_ALL, "【%s】SYS_GetLastResetSta:%x", VER_LIB, SYS_GetLastResetSta());
-//	for (uint8_t i = 0; i < DEVICE_MAX_CONNECT_COUNT; i++)
-//	{
-//		if (sysparam.relayUpgrade[i] == BLE_UPGRADE_FLAG)
-//		{
-//			sysinfo.updateStatus = 1;
-//		}
-//	}
+
 }
 
 /**************************************************
@@ -2583,8 +2586,8 @@ static tmosEvents myTaskEventProcess(tmosTaskID taskID, tmosEvents events)
     if (events & APP_TASK_KERNAL_EVENT)
     {
         kernalRun();
-        upgradeServerConnTask();
         ledTask();
+        bleOtaTask();
         return events ^ APP_TASK_KERNAL_EVENT;
     }
 
@@ -2592,6 +2595,7 @@ static tmosEvents myTaskEventProcess(tmosTaskID taskID, tmosEvents events)
     {
         pollUartData();
         portWdtFeed();
+        
         return events ^ APP_TASK_POLLUART_EVENT;
     }
     return 0;
@@ -2609,15 +2613,15 @@ void myTaskInit(void)
     sysinfo.taskId = TMOS_ProcessEventRegister(myTaskEventProcess);
     tmos_start_reload_task(sysinfo.taskId, APP_TASK_KERNAL_EVENT, MS1_TO_SYSTEM_TIME(100));
     tmos_start_reload_task(sysinfo.taskId, APP_TASK_POLLUART_EVENT, MS1_TO_SYSTEM_TIME(50));
-//    if (sysparam.bleen == 1)
-//    {	
-//    	char broadCastNmae[30];
-//		sprintf(broadCastNmae, "%s-%s", "AUTO", dynamicParam.SN + 9);
-//    	appPeripheralBroadcastInfoCfg(broadCastNmae);
-//    }
-//    else if (sysparam.bleen == 0)
-//    {
-//		appPeripheralCancel();
-//    }
+    if (sysparam.bleen == 1)
+    {	
+    	char broadCastNmae[30];
+		sprintf(broadCastNmae, "%s-%s", "AUTO", dynamicParam.SN + 9);
+    	appPeripheralBroadcastInfoCfg(broadCastNmae);
+    }
+    else if (sysparam.bleen == 0)
+    {
+		appPeripheralCancel();
+    }
 }
 

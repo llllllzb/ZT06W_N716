@@ -10,6 +10,7 @@ C_SRCS += \
 ../Task/app_bleRelay.c \
 ../Task/app_db.c \
 ../Task/app_encrypt.c \
+../Task/app_file.c \
 ../Task/app_gps.c \
 ../Task/app_instructioncmd.c \
 ../Task/app_jt808.c \
@@ -32,6 +33,7 @@ OBJS += \
 ./Task/app_bleRelay.o \
 ./Task/app_db.o \
 ./Task/app_encrypt.o \
+./Task/app_file.o \
 ./Task/app_gps.o \
 ./Task/app_instructioncmd.o \
 ./Task/app_jt808.o \
@@ -54,6 +56,7 @@ C_DEPS += \
 ./Task/app_bleRelay.d \
 ./Task/app_db.d \
 ./Task/app_encrypt.d \
+./Task/app_file.d \
 ./Task/app_gps.d \
 ./Task/app_instructioncmd.d \
 ./Task/app_jt808.d \

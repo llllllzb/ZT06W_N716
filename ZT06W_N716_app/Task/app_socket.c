@@ -235,8 +235,9 @@ void socketSchedule(void)
             if (sockSchInfo.runTick++ == 0)
             {
                 socketList[sockSchInfo.ind].connOK = SOCKET_CONN_IDLE;
-                openSocket(socketList[sockSchInfo.ind].socketId, socketList[sockSchInfo.ind].server,
-                             socketList[sockSchInfo.ind].port);
+                openSocket(socketList[sockSchInfo.ind].socketId, 
+                		   socketList[sockSchInfo.ind].server,
+                           socketList[sockSchInfo.ind].port);
             }
             if (socketList[sockSchInfo.ind].connOK == SOCKET_CONN_SUCCESS)
             {

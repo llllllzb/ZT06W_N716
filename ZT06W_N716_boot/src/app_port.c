@@ -537,7 +537,7 @@ void portGpioSetDefCfg(void)
 void portModuleGpioCfg(void)
 {
     GPIOB_ModeCfg(POWER_PIN, GPIO_ModeOut_PP_5mA);
-    GPIOB_ModeCfg(RST_PIN, GPIO_ModeOut_PP_5mA);
+    GPIOB_ModeCfg(POWER_SUPPLY_PIN, GPIO_ModeOut_PP_5mA);
     GPIOA_ModeCfg(DTR_PIN, GPIO_ModeOut_PP_5mA);
 
     PORT_POWER_SUPPLY_OFF;

@@ -64,9 +64,9 @@ void main(void)
     portModuleGpioCfg();
     portLedCfg();
     upgradeInfoInit();
-    moduleReset();
-    startTimer(3000, modulePowerOn, 0);
-    createSystemTask(myTask,1000);
+    startTimer(1000, modulePowerOn, 0);
+    createSystemTask(netConnectTask,1000);
+    createSystemTask(upgradeRunTask,200);
     createSystemTask(outputNode,200);
 	createSystemTask(ledRunTask,100);
     createSystemTask(pollUartData, 50);

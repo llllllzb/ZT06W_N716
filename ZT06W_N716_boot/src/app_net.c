@@ -216,18 +216,6 @@ static void moduleInit(void)
 }
 
 /**************************************************
-@bref		是否开机按键
-@param
-@return
-@note
-**************************************************/
-static void modulePressReleaseKey(void)
-{
-    PWRKEY_HIGH;
-    moduleState.powerState = 1;
-    LogPrintf(DEBUG_ALL, "PowerOn Done");
-}
-/**************************************************
 @bref		按下开机按键
 @param
 @return
@@ -237,7 +225,7 @@ static void modulePressReleaseKey(void)
 static void modulePressPowerKey(void)
 {
     PWRKEY_LOW;
-    startTimer(2500, modulePressReleaseKey, 0);
+    moduleState.powerState = 1;
 }
 /**************************************************
 @bref		模组开机
@@ -251,6 +239,7 @@ void modulePowerOn(void)
     LogMessage(DEBUG_ALL, "modulePowerOn");
     moduleInit();
     portUartCfg(APPUSART3, 1, 115200, moduleRecvParser);
+    
     POWER_ON;
     PWRKEY_HIGH;
     RSTKEY_HIGH;
@@ -287,7 +276,7 @@ void modulePowerOff(void)
     POWER_OFF;
     RSTKEY_HIGH;
     PWRKEY_LOW;
-    startTimer(2500, modulePowerOffProcess, 0);
+
     socketDelAll();
 }
 
@@ -314,8 +303,9 @@ void moduleReset(void)
 {
     LogMessage(DEBUG_ALL, "moduleReset");
     moduleInit();
-    RSTKEY_LOW;
-    startTimer(1000, moduleReleaseRstkey, 0);
+    POWER_OFF;
+    PWRKEY_HIGH;
+    startTimer(1000, modulePowerOn, 0);
     socketDelAll();
 }
 
@@ -527,8 +517,7 @@ void netConnectTask(void)
                     if (moduleCtrl.cgregCount >= 2)
                     {
                         moduleCtrl.cgregCount = 0;
-                        moduleState.cgregOK = 1;
-                        LogMessage(DEBUG_ALL, "Register timeout,try to skip\r\n");
+						moduleReset();
                     }
                     else
                     {
@@ -790,10 +779,8 @@ static void tcprecvParser(uint8_t *buf, uint16_t len)
 			LogPrintf(DEBUG_ALL, "Socket [%d] recv %d bytes data", sockId, recvlen);
 			if (sockId != 10 && index >= 0)
 				socketRecv(sockId, rebuf, recvlen);
-			
 			rebuf += index + 1;
 			relen -= index + 1;
-			
 		}
 		index = my_getstrindex((char *)rebuf, "+TCPRECV:", relen);
  	}
@@ -911,9 +898,16 @@ static void tcpcloseParser(uint8_t *buf, uint16_t len)
 			}
 		}
 	}
-	
 }
 
+void tcpsendParser(uint8_t *buf, uint16_t len)
+{
+	if (my_strstr((char *)buf, "ERROR", len) || 
+		my_strstr((char *)buf, "+TCPSEND: SOCKET ID OPEN FAILED", len))
+    {
+		changeProcess(CPIN_STATUS);
+    }
+}
 
 /**************************************************
 @bref		模组端数据接收解析器
@@ -984,6 +978,9 @@ void moduleRecvParser(uint8_t *buf, uint16_t bufsize)
         case XIIC_CMD:
             xiicParser(dataRestore, len);
             break;
+      	case TCPSEND_CMD:
+			tcpsendParser(dataRestore, len);
+			break;
         default:
             break;
     }

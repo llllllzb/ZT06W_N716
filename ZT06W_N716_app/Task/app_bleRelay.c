@@ -100,6 +100,9 @@ void bleRelayClearAllReq(uint32_t req)
 @param
 @return
 @note
+注意使用说明：该函数可以任何时候使用,但是使用完后不宜
+立马调用bleRelayInsert,应该等待蓝牙协议栈的断连回调
+之后再插入连接列表
 **************************************************/
 
 int8_t bleRelayInsert(uint8_t *addr, uint8_t addrType)
@@ -114,6 +117,7 @@ int8_t bleRelayInsert(uint8_t *addr, uint8_t addrType)
             bleRelayList[i].used = 1;
             tmos_memcpy(bleRelayList[i].addr, addr, 6);
             bleRelayList[i].addrType = addrType;
+            bleRelayList[i].bleInfo.updateTick = sysinfo.sysTick;
             ret = bleDevConnAdd(addr, addrType);
             if (sysparam.relayUpgrade[i] != BLE_UPGRADE_FLAG)
             {
@@ -126,11 +130,52 @@ int8_t bleRelayInsert(uint8_t *addr, uint8_t addrType)
 		                          BLE_EVENT_CHK_SOCKET    | BLE_EVENT_SET_TXPOWER);
             }
             return ret;
-
         }
     }
     return ret;
 }
+
+/**************************************************
+@bref       添加新的蓝牙设备到列表的指定位置
+@param
+@return
+@note
+注意使用说明：该函数可以任何时候使用,但是使用完后不宜
+立马调用bleRelayInsert,应该等待蓝牙协议栈的断连回调
+之后再插入连接列表
+**************************************************/
+
+int8_t bleRelayInsertIndex(uint8_t index, uint8_t *addr, uint8_t addrType)
+{
+	int8_t ret = -1;
+	if (bleRelayList[index].used)
+	{
+		LogPrintf(DEBUG_BLE, "bleRelayInsertIndex(%d)==>Occupied", index);
+		return ret;
+	}
+    else
+    {
+    	LogPrintf(DEBUG_BLE, "bleRelayInsertIndex(%d)==>ok", index);
+        tmos_memset(&bleRelayList[index], 0, sizeof(bleRelayDev_s));
+        bleRelayList[index].used = 1;
+        tmos_memcpy(bleRelayList[index].addr, addr, 6);
+        bleRelayList[index].addrType = addrType;
+        bleRelayList[index].bleInfo.updateTick = sysinfo.sysTick;
+        ret = bleDevConnAddIndex(index, addr, addrType);
+        if (sysparam.relayUpgrade[index] != BLE_UPGRADE_FLAG)
+        {
+        	bleRelaySetReq(index, BLE_EVENT_SET_RF_THRE   | BLE_EVENT_SET_OUTV_THRE | 
+        					  	  BLE_EVENT_SET_AD_THRE   | BLE_EVENT_GET_AD_THRE   |
+	                          	  BLE_EVENT_GET_RF_THRE   | BLE_EVENT_GET_OUT_THRE  | 
+	                              BLE_EVENT_GET_OUTV      | BLE_EVENT_GET_RFV       | 
+	                              BLE_EVENT_VERSION       | BLE_EVENT_GET_PRE_PARAM | 
+	                              BLE_EVENT_SET_PRE_PARAM | BLE_EVENT_GET_PRE_PARAM | 
+	                              BLE_EVENT_CHK_SOCKET    | BLE_EVENT_SET_RTC);
+        }
+        return ret;
+    }
+}
+
 
 /**************************************************
 @bref       初始化
@@ -145,14 +190,14 @@ void bleRelayInit(void)
     uint8_t mac[6];
     tmos_memset(mac, 0, 6);
     tmos_memset(&bleRelayList, 0, sizeof(bleRelayList));
-    for (i = 0; i < BLE_CONNECT_LIST_SIZE; i++)
-    {
-        if (tmos_memcmp(mac, sysparam.bleConnMac[i], 6) == TRUE)
-        {
-            continue;
-        }
-        bleRelayInsert(sysparam.bleConnMac[i], 0);
-    }
+//    for (i = 0; i < BLE_CONNECT_LIST_SIZE; i++)
+//    {
+//        if (tmos_memcmp(mac, sysparam.bleConnMac[i], 6) == TRUE)
+//        {
+//            continue;
+//        }
+//        bleRelayInsert(sysparam.bleConnMac[i], 0);
+//    }
     /* 上电是否要关一次继电器，取决于存不存在关继电器过程中会复位 */
     /* 如果加上下面的逻辑，那么如果发了acc off 那么每次上电都要去连断连继电器       且每次上电没联网之前就会去连接蓝牙*/
 //    if (sysparam.relayCtl)
@@ -166,12 +211,16 @@ void bleRelayInit(void)
 @param
 @return
 @note
+注意使用说明：该函数可以任何时候使用,但是使用完后不宜
+立马调用bleRelayInsert,应该等待蓝牙协议栈的断连回调
+之后再插入连接列表
 **************************************************/
 
 void bleRelayDeleteAll(void)
 {
     bleDevConnDelAll();
     tmos_memset(bleRelayList, 0, sizeof(bleRelayList));
+    LogPrintf(DEBUG_BLE, "bleRelayDeleteAll==>ok");
 }
 
 /**************************************************
@@ -213,9 +262,9 @@ void bleConnPermissonManger(void)
 	deviceConnInfo_s *devinfo;
 	for (i = 0; i < bleDevGetCnt(); i++)
 	{
-		
 		if (sysparam.relayUpgrade[i] == BLE_UPGRADE_FLAG)
 		{
+
 			bleDevAllPermitDisable();
 			bleDevSetPermit(i, BLE_CONN_ENABLE);
 			return;
@@ -353,8 +402,13 @@ void bleRelaySendDataTry(void)
     uint16_t value16;
     uint32_t event;
     deviceConnInfo_s *devInfo;
-    ind = ind % BLE_CONNECT_LIST_SIZE;
-    for (; ind  < BLE_CONNECT_LIST_SIZE; ind++)
+    if (sysparam.bleMacCnt > BLE_CONNECT_LIST_SIZE)
+    {
+		sysparam.bleMacCnt = 2;
+		paramSaveAll();
+    }
+    ind = ind % sysparam.bleMacCnt;
+    for (; ind  < sysparam.bleMacCnt; ind++)
     {
         event = bleRelayList[ind].dataReq;
         if (event != 0 && bleRelayList[ind].used)
@@ -365,9 +419,17 @@ void bleRelaySendDataTry(void)
                 LogMessage(DEBUG_BLE, "Not find devinfo");
                 continue;
             }
+            /* 没使能notify之前不发数据 */
             if (devInfo->notifyDone && devInfo->connHandle != INVALID_CONNHANDLE)
             {
                 LogPrintf(DEBUG_BLE, "bleRelaySendDataTry(%d),Handle[%d]", ind, devInfo->connHandle);
+                //快速回复
+                if (event & BLE_EVENT_CLR_FAST_ALARM)
+			    {
+					LogMessage(DEBUG_ALL, "try to clear fast shield alarm");
+					bleRelaySendProtocol(devInfo->connHandle, devInfo->charHandle, CMD_CLEAR_FAST_SHIELD_ALARM, param, 0);
+					break;
+			    }
 
                 if (event & BLE_EVENT_SET_RTC)
                 {
@@ -487,13 +549,20 @@ void bleRelaySendDataTry(void)
                     bleRelaySendProtocol(devInfo->connHandle, devInfo->charHandle, CMD_CLEAR_PREALARM, param, 1);
                     break;
                 }
+                if (event & BLE_EVENT_CLR_FAST_ALARM)
+                {
+					LogMessage(DEBUG_BLE, "try to clear fast prealarm");
+					bleRelaySendProtocol(devInfo->connHandle, devInfo->charHandle, CMD_CLEAR_FAST_SHIELD_ALARM, param, 1);
+					break;
+               	}
                 if (event & BLE_EVENT_SET_PRE_PARAM)
                 {
                     LogMessage(DEBUG_BLE, "try to set preAlarm param");
                     param[0] = sysparam.blePreShieldVoltage;
                     param[1] = sysparam.blePreShieldDetCnt;
                     param[2] = sysparam.blePreShieldHoldTime;
-                    bleRelaySendProtocol(devInfo->connHandle, devInfo->charHandle, CMD_SET_PRE_ALARM_PARAM, param, 3);
+                    param[3] = sysparam.blefastShieldTime;
+                    bleRelaySendProtocol(devInfo->connHandle, devInfo->charHandle, CMD_SET_PRE_ALARM_PARAM, param, 4);
                     break;
                 }
                 if (event & BLE_EVENT_GET_PRE_PARAM)
@@ -520,40 +589,10 @@ void bleRelaySendDataTry(void)
 					bleRelaySendProtocol(devInfo->connHandle, devInfo->charHandle, CMD_SET_TXPOWER, param, 0);
 			        break;
 			    }
-//			    /* ota部分 */
-//			    /* ota开始 */
-//			    if (event & BLE_EVENT_OTA_START)
-//				{
-//					LogPrintf(DEBUG_UP, "Dev(%d) try to start ota ", ind);
-//					bleRelaySendProtocol(devInfo->connHandle, devInfo->charHandle, CMD_OTA_START, param, 0);
-//					break;
-//				}
-//				/* ota擦除 */
-//			    if (event & BLE_EVENT_OTA_EARSE)
-//				{
-//					LogPrintf(DEBUG_UP, "Dev(%d) try to earse program ", ind);
-//					bleRelaySendProtocol(devInfo->connHandle, devInfo->charHandle, CMD_OTA_EARSE, param, 0);
-//					break;
-//				}
-//				/* ota写入 */
-//				if (event & BLE_EVENT_OTA_WRITE)
-//				{
-//					LogPrintf(DEBUG_UP, "Dev(%d) try to write program ", ind);
-//					bleRelaySendProtocol(devInfo->connHandle, devInfo->charHandle, CMD_OTA_WRITE, param, 0);
-//					break;
-//				}
-//				/* ota结束 */
-//				if (event & BLE_EVENT_OTA_FINISH)
-//				{
-//					LogPrintf(DEBUG_UP, "Dev(%d) try to finish ota ", ind);
-//					bleRelaySendProtocol(devInfo->connHandle, devInfo->charHandle, CMD_OTA_FINISH, param, 0);
-//					break;
-//				}
             }
-
         }
     }
-    if (ind != BLE_CONNECT_LIST_SIZE)
+    if (ind != sysparam.bleMacCnt)
     {
         ind++;
     }
@@ -683,7 +722,7 @@ void bleRelayRecvParser(uint16_t connHandle, uint8_t *data, uint8_t len)
         {
             continue;
         }
-        //LogPrintf(DEBUG_ALL, "CMD[0x%02X]", data[readInd + 3]);
+        LogPrintf(DEBUG_ALL, "CMD[0x%02X]", data[readInd + 3]);
         /*状态更新*/
         bleRelayList[ind].bleInfo.updateTick = sysinfo.sysTick;
         if (bleRelayList[ind].bleInfo.bleLost == 1)
@@ -818,6 +857,7 @@ void bleRelayRecvParser(uint16_t connHandle, uint8_t *data, uint8_t len)
                 bleRelayList[ind].bleInfo.preV_threshold = data[readInd + 4];
                 bleRelayList[ind].bleInfo.preDetCnt_threshold = data[readInd + 5];
                 bleRelayList[ind].bleInfo.preHold_threshold = data[readInd + 6];
+                bleRelayList[ind].bleInfo.fastPreVDetTime = data[readInd + 7];
                 bleRelayClearReq(ind, BLE_EVENT_GET_PRE_PARAM);
                 break;
             case CMD_GET_DISCONNECT_PARAM:
@@ -849,6 +889,7 @@ void bleRelayRecvParser(uint16_t connHandle, uint8_t *data, uint8_t len)
            		break;
            	case CMD_VER:
            		versionLen = data[readInd + 1] - 2;
+           		/* 老版本软件 */
            		if (versionLen == 1)
            		{
            			if (bleRelayList[ind].bleInfo.rfV == 0.0)
@@ -864,10 +905,9 @@ void bleRelayRecvParser(uint16_t connHandle, uint8_t *data, uint8_t len)
 				}
 				else
 				{
-					
+					tmos_memcpy(bleRelayList[ind].bleInfo.version, data + readInd + 4, versionLen);
+					LogPrintf(DEBUG_BLE, "^^BLE==>Dev(%d) ver:%s", ind, bleRelayList[ind].bleInfo.version);
 				}
-				if (upgradeDevIndex() >= 0 && upgradeDevIndex() < DEVICE_MAX_CONNECT_COUNT)
-					updateUISVersion(bleRelayList[upgradeDevIndex()].bleInfo.version);
 				bleRelayClearReq(ind, BLE_EVENT_VERSION);
            		break;
            	case CMD_SET_TXPOWER:
@@ -878,7 +918,17 @@ void bleRelayRecvParser(uint16_t connHandle, uint8_t *data, uint8_t len)
 				LogPrintf(DEBUG_UP, "^^BLE==>Dev(%d) enter ota", ind);
 				bleRelayDeleteAll();
 				sysparam.relayUpgrade[ind] = BLE_UPGRADE_FLAG;
+				paramSaveAll();
 				bleRelayClearReq(ind, BLE_EVENT_OTA);
+           		break;
+           	case CMD_SEND_FAST_SHIELD_ALARM:
+				LogPrintf(DEBUG_BLE, "^^BLE==>Dev(%d)fast shield alarm", ind);
+				alarmRequestSet(ALARM_FAST_PERSHIELD_REQUEST);
+				bleRelaySetReq(ind, BLE_EVENT_CLR_FAST_ALARM);
+           		break;
+           	case CMD_CLEAR_FAST_SHIELD_ALARM:
+				LogPrintf(DEBUG_BLE, "^^BLE==>Dev(%d)clear fast shield alarm success", ind);
+				bleRelayClearReq(ind, BLE_EVENT_CLR_FAST_ALARM);
            		break;
         }
         readInd += size + 3;

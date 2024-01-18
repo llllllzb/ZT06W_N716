@@ -11,6 +11,7 @@
 #include "app_server.h"
 #include "app_socket.h"
 #include "app_jt808.h"
+#include "app_central.h"
 
 //联网相关结构体
 
@@ -95,6 +96,7 @@ const atCmd_s cmdtable[] =
 	{SIMCROSS_CMD, "AT+SIMCROSS"},
 	{READADC_CMD, "AT+READADC"},
 	{CLIP_CMD, "AT+CLIP"},
+	{FSFS_CMD, "AT+FSFS"},
 };
 
 /**************************************************
@@ -327,18 +329,7 @@ static void moduleInit(void)
     memset(&moduleState, 0, sizeof(moduleState_s));
 }
 
-/**************************************************
-@bref		是否开机按键
-@param
-@return
-@note
-**************************************************/
-static void modulePressReleaseKey(void)
-{
-    PWRKEY_HIGH;
-    moduleState.powerState = 1;
-    LogPrintf(DEBUG_ALL, "PowerOn Done");
-}
+
 /**************************************************
 @bref		按下开机按键
 @param
@@ -349,7 +340,8 @@ static void modulePressReleaseKey(void)
 static void modulePressPowerKey(void)
 {
     PWRKEY_LOW;
-    startTimer(25, modulePressReleaseKey, 0);
+    moduleState.powerState = 1;
+    LogPrintf(DEBUG_ALL, "PowerOn Done");
 }
 /**************************************************
 @bref		模组开机
@@ -578,7 +570,7 @@ static void moduleExitFly(void)
 static void qirdCmdSend(uint8_t link)
 {
     char param[10];
-	sprintf(param, "%d,500", link);
+	sprintf(param, "%d,768", link);
 	moduleState.curQirdId = link;
     sendModuleCmd(TCPREAD_CMD, param);
 }
@@ -823,6 +815,7 @@ void netConnectTask(void)
 			sendModuleCmd(CCID_CMD, NULL);
 			sendModuleCmd(CIMI_CMD, NULL);
 			sendModuleCmd(CGSN_CMD, NULL);
+			sendModuleCmd(FSLIST_CMD, "?");
 			sendModuleCmd(RECVMODE_CMD, "0");
 			sendModuleCmd(CLIP_CMD, "1");
 			moduleGetLbs();
@@ -2112,23 +2105,10 @@ void tcpsendParser(uint8_t *buf, uint16_t len)
 	if (my_strstr((char *)buf, "ERROR", len) || 
 		my_strstr((char *)buf, "+TCPSEND: SOCKET ID OPEN FAILED", len))
     {
-		if (sysparam.protocol == JT808_PROTOCOL_TYPE)
+		if (moduleState.curSendId == NORMAL_LINK ||
+		    moduleState.curSendId == JT808_LINK)
 		{
-			if (socketGetConnStatus(JT808_LINK) == SOCKET_CONN_SUCCESS)
-			{
-				querySocketStatus(JT808_LINK);
-			}
-		}
-		else
-		{
-			if (socketGetConnStatus(NORMAL_LINK) == SOCKET_CONN_SUCCESS)
-			{
-				querySocketStatus(NORMAL_LINK);
-			}
-		}
-		if (socketGetConnStatus(HIDDEN_LINK) == SOCKET_CONN_SUCCESS)
-		{
-			querySocketStatus(HIDDEN_LINK);
+			changeProcess(CPIN_STATUS);
 		}
     }
 }
@@ -2334,12 +2314,222 @@ void clipParser(uint8_t *buf, uint16_t len)
 				LogPrintf(DEBUG_ALL, "Not sos number, hang up");
 				sendModuleCmd(ATH_CMD, NULL);
 			}
-
 		}
 	}
-	
 }
 
+/**************************************************
+@bref		+FSLIST 写文件解析
+@param
+@return
+@note
+nwy_last_imsi,15
+gpssave.data,220
+OK
+
+**************************************************/
+
+void fslistParser(uint8_t *buf, uint16_t len)
+{
+	uint8_t *rebuf;
+	uint16_t relen, i;
+	char restore[50];
+	int index;
+	rebuf = buf;
+	relen = len;
+	index = my_getstrindex(rebuf, "OK", relen);
+	LogPrintf(DEBUG_ALL, "okindex:%d", index);
+	if (index < 5)
+	{
+		moduleState.fileNum = 0;
+		LogPrintf(DEBUG_ALL, "No file");
+		return;
+	}
+	/* 过滤开头的\r\n */
+	rebuf += 2;
+	relen -= 2;
+	moduleState.fileNum = 0;
+	LogPrintf(DEBUG_ALL, "File list>>>>>>>>>>>>");
+	while (relen >= 0)
+	{
+		index = getCharIndex(rebuf, relen, ',');
+		if (index < 0)
+			return;
+		if (moduleState.fileNum <= FILE_MAX_CNT)
+		{
+			tmos_memcpy(moduleState.file[moduleState.fileNum].fileName, rebuf, index);
+			moduleState.file[moduleState.fileNum].fileName[index] = 0;
+			rebuf += index + 1;
+			relen -= index + 1;
+			index = getCharIndex(rebuf, relen, '\r');
+
+			if (index < 0)
+				return;
+			tmos_memcpy(restore, rebuf, index);
+			restore[index] = 0;
+			moduleState.file[moduleState.fileNum].fileSize = atoi(restore);
+			LogPrintf(DEBUG_ALL, "File[%d]:%s,size:%d", moduleState.fileNum,
+														moduleState.file[moduleState.fileNum].fileName, 
+														moduleState.file[moduleState.fileNum].fileSize);
+			moduleState.fileNum++;
+		}
+		rebuf += index + 2;
+		relen -= index + 2;
+	}
+}
+
+/**************************************************
+@bref		+FSWF 写文件解析
+@param
+@return
+@note
+**************************************************/
+
+void fswfParser(uint8_t *buf, uint16_t len)
+{
+	uint8_t *rebuf;
+	uint16_t relen;
+	int index;
+	rebuf = buf;
+	relen = len;
+	index = my_getstrindex(rebuf, "+FSWF:", relen);
+	while (index >= 0)
+	{
+		rebuf += index + 8;
+		relen -= index + 8;
+		index = my_getstrindex(rebuf, "+FSWF:", relen);
+	}
+}
+
+/**************************************************
+@bref		+FSRF 写文件解析
+@param
+@return
+@note
++FSRF: 10,start01234
+**************************************************/
+
+void fsrfParser(uint8_t *buf, uint16_t len)
+{
+	uint8_t *rebuf;
+	uint16_t relen;
+	uint16_t readSize;
+	char restore[20] = { 0 };
+	int index;
+	rebuf = buf;
+	relen = len;
+	index = my_getstrindex(rebuf, "+FSRF:", relen);
+	while (index >= 0)
+	{
+		rebuf += index + 7;
+		relen -= index + 7;
+		index = getCharIndex(rebuf, relen, ',');
+		if (index > 0 && index <= 5)
+		{
+			tmos_memcpy(restore, rebuf, index);
+			restore[index] = 0;
+			readSize = atoi(restore);
+			if (readSize != 0)
+			{
+				rebuf += index + 1;
+				relen -= index + 1;
+				LogPrintf(DEBUG_UP, "relen:%d readSize:%d", relen, readSize);
+				if (relen > readSize)
+				{
+					if (relen - readSize >= 10)
+					{
+						LogPrintf(DEBUG_UP, "读取数据重叠");
+					}
+					else
+					{
+						ota_package_t pkg;
+						pkg.data   = rebuf;
+						pkg.len    = readSize;
+						if (getBleOtaFsm() == BLE_OTA_FSM_READ)
+						{
+							if (bleDevGetOtaStatusByIndex(getBleOtaStatus()) != 0)
+							{
+								bleOtaFilePackage(pkg);
+							}
+						}
+						else if (getBleOtaFsm() == BLE_OTA_FSM_VERI_READ)
+						{
+							if (bleDevGetOtaStatusByIndex(getBleOtaStatus()) != 0)
+							{
+								bleVerifyFilePackage(pkg);
+							}
+						}
+					}
+				}
+				else
+				{
+					LogPrintf(DEBUG_UP, "读文件错误");
+					if (getBleOtaFsm() == BLE_OTA_FSM_READ)
+					{
+						bleOtaFsmChange(BLE_OTA_FSM_READ);
+					}
+					else if (getBleOtaFsm() == BLE_OTA_FSM_VERI_READ)
+					{
+						bleOtaFsmChange(BLE_OTA_FSM_VERI_READ);
+					}
+				}
+			}
+		}
+		index = my_getstrindex(rebuf, "+FSRF:", relen);
+	}
+}
+
+/**************************************************
+@bref		+FSFS 写文件解析
+@param
+@return
+@note
++FSFS: 44624
+
+**************************************************/
+
+static void fsfsParser(uint8_t *buf, uint16_t len)
+{
+	uint8_t *rebuf;
+	uint16_t relen;
+	uint16_t fileSize;
+	char restore[20] = { 0 };
+	int  index;
+	rebuf = buf;
+	relen = len;
+	index = my_getstrindex(rebuf, "+FSFS:", relen);
+	while (index >= 0)
+	{
+		rebuf += index + 7;
+		relen -= index + 7;
+		index = getCharIndex(rebuf, relen, '\r');
+//		if (index < 0)
+//		{
+//			index = getCharIndex(rebuf, relen, '\r');
+//		}
+		if (index > 0 && index < 10)
+		{
+			tmos_memcpy(restore, rebuf, index);
+			restore[index] = 0;
+			fileSize = atoi(restore);
+			LogPrintf(DEBUG_ALL, "File size:%d", fileSize);
+			if (getUpgradeServerFsm() == NETWORK_VERIFY_LENGTH)
+			{
+				if (fileSize == getFileTotalSize())
+				{
+					LogPrintf(DEBUG_UP, "Verfy length success");
+					upgradeServerChangeFsm(NETWORK_DOWNLOAD_END);
+				}
+				else
+				{
+					upgradeServerChangeFsm(NETWORK_VERIFY_ERROR);
+				}
+			}
+		}
+		index = my_getstrindex(rebuf, "+FSFS:", relen);
+	}
+}
+
 /**************************************************
 @bref		模组异常复位检测
 @param
@@ -2417,7 +2607,8 @@ void moduleRecvParser(uint8_t *buf, uint16_t bufsize)
     tcpreadParser(dataRestore, len);
 	tcpcloseParser(dataRestore, len);
 	clipParser(dataRestore, len);
-
+	fsrfParser(dataRestore, len);
+	
     /*****************************************/
     switch (moduleState.cmd)
     {
@@ -2484,6 +2675,15 @@ void moduleRecvParser(uint8_t *buf, uint16_t bufsize)
             break;
         case XIIC_CMD:
 			xiicParser(dataRestore, len);
+        	break;
+        case FSLIST_CMD:
+			fslistParser(dataRestore, len);
+        	break;
+        case FSFS_CMD:
+			fsfsParser(dataRestore, len);
+        	break;
+        case FSRF_CMD:
+			
         	break;
         case SIMCROSS_CMD:
         	simcrossParser(dataRestore, len);
@@ -2565,7 +2765,7 @@ int socketSendData(uint8_t link, uint8_t *data, uint16_t len)
         //链路未链接
         return 0;
     }
-
+	moduleState.curSendId = link;
     sprintf(param, "%d,%d", link, len);
     sendModuleCmd(TCPSEND_CMD, param);
     createNode((char *)data, len, TCPSEND_CMD);
@@ -2693,6 +2893,37 @@ void queryBatVoltage(void)
 }
 
 /**************************************************
+@bref		清空文件列表
+@param
+@return
+@note
+**************************************************/
+
+void moduleFileInfoClear(void)
+{
+	tmos_memset(&moduleState.file, 0, sizeof(moduleState.file));
+	moduleState.fileNum = 0;
+}
+
+
+/**************************************************
+@bref		比较文件列表
+@param
+@return
+@note
+**************************************************/
+
+uint8_t compareFile(uint8_t *file, uint8_t len)
+{
+	for (uint8_t i = 0; i < moduleState.fileNum; i++)
+	{
+		if (strncmp(moduleState.file[i].fileName, file, len) == 0)
+			return 1;
+	}
+	return 0;
+}
+
+/**************************************************
 @bref		读取信号值
 @param
 @return
@@ -2802,15 +3033,16 @@ uint32_t getTcpNack(void)
 }
 
 /**************************************************
-@bref       查询模组版本
+@bref		获取文件列表
 @param
 @return
 @note
 **************************************************/
 
-char *getQgmr(void)
+fileInfo_s* getFileList(uint8_t *num)
 {
-    return moduleState.qgmr;
+	*num = moduleState.fileNum;
+	return moduleState.file;
 }
 
 

@@ -661,8 +661,7 @@ void updateLocalRTCTime(datetime_s *datetime)
     datetime_s localtime;
     localtime = changeUTCTimeToLocalTime(*datetime, sysparam.utc);
     portUpdateRtcOffset(localtime.year, localtime.month, localtime.day, localtime.hour, localtime.minute,
-                          localtime.second);
-
+                        localtime.second);
     if (sysparam.MODE == MODE1 || sysparam.MODE == MODE21)
     {
         portSetNextAlarmTime();

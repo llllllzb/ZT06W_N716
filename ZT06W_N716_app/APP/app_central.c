@@ -5,6 +5,8 @@
 #include "app_server.h"
 #include "app_param.h"
 #include "app_protocol.h"
+#include "app_file.h"
+#include "app_kernal.h"
 //全局变量
 
 tmosTaskID bleCentralTaskId = INVALID_TASK_ID;
@@ -12,10 +14,11 @@ static gapBondCBs_t bleBondCallBack;
 static gapCentralRoleCB_t bleRoleCallBack;
 static deviceConnInfo_s devInfoList[DEVICE_MAX_CONNECT_COUNT];
 static bleScheduleInfo_s bleSchedule;
+static int16_t ble_conn_now_id;
 static OTA_IAP_CMD_t iap_send_buff;
-static uint16_t iap_buff_len = 0;
-static ble_ota_fsm_e ble_ota_fsm = 0;
-static ota_package_t otaRxInfo;
+static ble_ota_fsm_e ble_ota_fsm  = 0;
+static uint16_t      ble_ota_tick = 0;
+static fileRxInfo    otaRxInfo;
 
 
 //函数声明
@@ -36,12 +39,15 @@ static void bleDevDiscoverAllChars(uint16_t connHandle);
 static void bleDevDiscoverNotify(uint16_t connHandle);
 static uint8_t bleDevEnableNotify(void);
 static uint8_t bleDevSendDataTest(void);
-static void bleCentralChangeMtu(uint16_t connHandle);
+bStatus_t bleCentralChangeMtu(uint16_t connHandle);
+static void bleDevSetConnUuid(uint8_t ind, uint16_t serUuid, uint16_t charUuid);
 
 static void bleSchduleChangeFsm(bleFsm nfsm);
 static void bleScheduleTask(void);
 static void bleDevDiscoverCharByUuid(void);
 static void bleDevDiscoverServByUuid(void);
+static void bleDevSetConnUuid(uint8_t ind, uint16_t serUuid, uint16_t charUuid);
+
 
 
 
@@ -55,6 +61,7 @@ static void bleDevDiscoverServByUuid(void);
 
 void bleCentralInit(void)
 {
+	otaRxInfoInit(0,NULL, 0);
     bleDevConnInit();
     bleRelayInit();
     GAPRole_CentralInit();
@@ -117,8 +124,9 @@ static void attReadByTypeRspCB(gattMsgEvent_t *pMsgEvt)
 	uint8_t i;
 	for (i = 0; i < DEVICE_MAX_CONNECT_COUNT; i++)
 	{
-		if (devInfoList[i].use && devInfoList[i].discState       == BLE_DISC_STATE_CHAR
-							   && devInfoList[i].findServiceDone == 1)
+		if (devInfoList[i].use && 
+			devInfoList[i].discState == BLE_DISC_STATE_CHAR && 
+			devInfoList[i].findServiceDone == 1)
 		{
 			if (pMsgEvt->msg.readByTypeRsp.numPairs > 0)
 			{
@@ -128,14 +136,23 @@ static void attReadByTypeRspCB(gattMsgEvent_t *pMsgEvt)
 			}
 			if ((pMsgEvt->method == ATT_READ_BY_TYPE_RSP && pMsgEvt->hdr.status == bleProcedureComplete))
             {
-            	if (sysparam.relayUpgrade[i] == BLE_UPGRADE_FLAG)
+            	if (devInfoList[i].findServiceUuid == OTA_SERVER_UUID && 
+            		devInfoList[i].findCharUuid    == OTA_CHAR_UUID)
             	{
 					bleDevConnectComplete(devInfoList[i].connHandle);
             	}
-            	else
+            	else if (devInfoList[i].findServiceUuid == SERVICE_UUID &&
+            	  		 devInfoList[i].findCharUuid    == CHAR_UUID)
             	{
 					bleDevDiscoverNotify(devInfoList[i].connHandle);
 				}
+				else
+				{
+					LogPrintf(DEBUG_BLE, "attReadByTypeRspCB==>Error, serUuid:0x%04x charUuid:0x%04x",
+      						  			  devInfoList[i].findServiceUuid,
+      						              devInfoList[i].findCharUuid);
+				}
+				ble_conn_now_id = -1;
             }
 		}
 		if (devInfoList[i].use && devInfoList[i].discState    == BLE_DISC_STATE_CCCD
@@ -168,22 +185,78 @@ static void gattMessageHandler(gattMsgEvent_t *pMsgEvt)
     uint16 uuid, startHandle, endHandle, findHandle;
     bStatus_t status;
     OTA_IAP_CMD_t iap_read_data;
-    LogPrintf(DEBUG_BLE, "Handle[%d],Method[0x%02X],Status[0x%02X]", pMsgEvt->connHandle, pMsgEvt->method,
-              pMsgEvt->hdr.status);
+    LogPrintf(DEBUG_BLE, "Handle[%d],Method[0x%02X],Status[0x%02X]", 
+					    						pMsgEvt->connHandle, 
+					    						pMsgEvt->method,
+					             				pMsgEvt->hdr.status);
     switch (pMsgEvt->method)
     {
         case ATT_ERROR_RSP:
-            LogPrintf(DEBUG_BLE, "Error,Handle[%d],ReqOpcode[0x%02X],ErrCode[0x%02X]", pMsgEvt->msg.errorRsp.handle,
-                      pMsgEvt->msg.errorRsp.reqOpcode, pMsgEvt->msg.errorRsp.errCode);
-            
+            LogPrintf(DEBUG_BLE, "Error,Handle[%d],ReqOpcode[0x%02X],ErrCode[0x%02X]", 
+					            						pMsgEvt->connHandle,	//注意这里的handle不是连接句柄
+					                      				pMsgEvt->msg.errorRsp.reqOpcode, 
+					                      				pMsgEvt->msg.errorRsp.errCode);
+            /* 找不到对应的服务 */
             if (ATT_ERR_ATTR_NOT_FOUND == pMsgEvt->msg.errorRsp.errCode)
             {
-				LogPrintf(DEBUG_BLE, "Dev connhandle[%d] was in ota program", pMsgEvt->msg.errorRsp.handle);
-//			    int8_t id = bleDevGetIdByHandle(pMsgEvt->msg.errorRsp.handle);
-//			    if (id >= 0)
-//			    {
-//					sysparam.relayUpgrade[id] = 1;
-//			    }
+            	/* 
+					情况1：主机往BLE写文件的时候，主机复位了，继电器处于IAP层
+					情况2：设备刚开始升级，继电器还没擦除APP，继电器（断电）复位，继电器跑回APP层
+            	*/
+            	int8_t id = bleDevGetIdByHandle(pMsgEvt->connHandle);
+            	if (id >= 0)
+            	{
+//					bleRelayDeleteAll();
+//					sysparam.relayUpgrade[id] = BLE_UPGRADE_FLAG;
+//					LogPrintf(DEBUG_BLE, "Dev(%d) connhandle[%d] was in ota program,change it", 
+//										  id, pMsgEvt->connHandle);
+					/* 情况2 */
+					if (devInfoList[id].findServiceUuid == OTA_SERVER_UUID && 
+	            		devInfoList[id].findCharUuid    == OTA_CHAR_UUID)
+	            	{
+						LogPrintf(DEBUG_BLE, "gattMessageHandler==>Error,Dev(%d)Handle[%d] is in app", 
+										      id, pMsgEvt->connHandle);
+						for (i = 0; i < DEVICE_MAX_CONNECT_COUNT; i++)
+						{
+							sysparam.relayUpgrade[i] = 0;
+						}
+						otaRxInfoInit(0, NULL, 0);
+						paramSaveAll();
+						bleRelayDeleteAll();
+//						/* 切换normal蓝牙连接 */
+//						bleDevSetConnUuid(i, SERVICE_UUID, CHAR_UUID);
+	            	}
+	            	else if (devInfoList[id].findServiceUuid == SERVICE_UUID &&
+	            	  		 devInfoList[id].findCharUuid    == CHAR_UUID)
+	            	{
+	            		LogPrintf(DEBUG_BLE, "gattMessageHandler==>Error,Dev(%d)Handle[%d] is in boot", 
+										      id, pMsgEvt->connHandle);
+						sysparam.relayUpgrade[id] = BLE_UPGRADE_FLAG;
+						paramSaveAll();
+						bleRelayDeleteAll();
+						/* 载入升级包信息 */
+						
+					}
+					/* UUID错乱 */
+					else
+					{
+						LogPrintf(DEBUG_BLE, "gattMessageHandler==>Error,serUuid:0x%04x charUuid:0x%04x",
+	      						  			  devInfoList[id].findServiceUuid,
+	      						              devInfoList[id].findCharUuid);
+	      				bleRelayDeleteAll();
+					}
+            	}
+            	else
+            	{
+					LogPrintf(DEBUG_BLE, "gattMessageHandler==>Error,id:%d, connhandle:%d", 
+										  id, pMsgEvt->connHandle);
+            	}
+//            	else
+//            	{
+//					sysparam.relayUpgrade[getBleOtaStatus()] = 0;
+//					paramSaveAll();
+//					LogPrintf(DEBUG_BLE, "Dev connhandle[%d] was in normal program,change it", pMsgEvt->msg.errorRsp.handle);
+//            	}
             }
             break;
         //查找服务 BY UUID
@@ -252,7 +325,7 @@ static void gattMessageHandler(gattMsgEvent_t *pMsgEvt)
             break;
         //数据发送回复
         case ATT_WRITE_RSP:
-            LogPrintf(DEBUG_BLE, "Handle[%d] send %s!", pMsgEvt->connHandle, pMsgEvt->hdr.status == SUCCESS ? "success" : "fail");
+            LogPrintf(DEBUG_BLE, "^^Handle[%d] send %s!", pMsgEvt->connHandle, pMsgEvt->hdr.status == SUCCESS ? "success" : "fail");
             break;
 		//读取数据
         case ATT_READ_RSP:
@@ -261,6 +334,11 @@ static void gattMessageHandler(gattMsgEvent_t *pMsgEvt)
         	byteToHexString(pMsgEvt->msg.readRsp.pValue, debug, dataLen);
         	debug[dataLen * 2] = 0;
 			LogPrintf(DEBUG_BLE, "^^Handle[%d] Read:%s, len:%d", pMsgEvt->connHandle, debug, pMsgEvt->msg.readRsp.len);
+			if (pMsgEvt->msg.readRsp.len == 0)
+			{
+				tmos_start_reload_task(bleCentralTaskId, BLE_TASK_OTA_READ_EVENT, MS1_TO_SYSTEM_TIME(BLE_WRITE_OR_READ_MS));
+				break;
+			}
 			bleOtaReadDataParser(pMsgEvt->connHandle, iap_read_data, pMsgEvt->msg.readRsp.len);
         	break;
         //收到notify数据
@@ -272,7 +350,11 @@ static void gattMessageHandler(gattMsgEvent_t *pMsgEvt)
             LogPrintf(DEBUG_BLE, "^^Handle[%d],Recv:[%s]", pMsgEvt->connHandle, debug);
             bleRelayRecvParser(pMsgEvt->connHandle, pData, dataLen);
             break;
+        //修改MTU请求
         case ATT_EXCHANGE_MTU_RSP:
+
+        	break;
+        //修改MTU结果
         case ATT_MTU_UPDATED_EVENT:
 			LogPrintf(DEBUG_BLE, "^^Handle[%d] MTU update:%d", pMsgEvt->connHandle, pMsgEvt->msg.mtuEvt.MTU);
         	break;
@@ -385,10 +467,11 @@ static tmosEvents bleCentralTaskEventProcess(tmosTaskID taskID, tmosEvents event
 		{
 			if (devInfoList[i].use && 
 				devInfoList[i].connHandle != INVALID_CONNHANDLE &&
-				sysparam.relayUpgrade[i]  == BLE_UPGRADE_FLAG)
+				sysparam.relayUpgrade[i]   == BLE_UPGRADE_FLAG)
 			{
 				LogPrintf(DEBUG_BLE, "Dev(%d) Read connHandle[0x%02x] charHandle[0x%02x]", i, devInfoList[i].connHandle, devInfoList[i].charHandle);
 				status = bleCentralRead(devInfoList[i].connHandle, devInfoList[i].charHandle);
+				break;
 			}
 		}
 		if (status == SUCCESS)
@@ -405,13 +488,13 @@ static tmosEvents bleCentralTaskEventProcess(tmosTaskID taskID, tmosEvents event
 		{
 			if (devInfoList[i].use && 
 				devInfoList[i].connHandle != INVALID_CONNHANDLE &&
-				sysparam.relayUpgrade[i]  == BLE_UPGRADE_FLAG)
+				sysparam.relayUpgrade[i]   == BLE_UPGRADE_FLAG)
 			{
 				LogPrintf(DEBUG_BLE, "Dev(%d) Write connHandle[0x%02x] charHandle[0x%02x]", i, devInfoList[i].connHandle, devInfoList[i].charHandle);
 				status = bleOtaSendProtocol(devInfoList[i].connHandle, devInfoList[i].charHandle);
+				break;
 			}
 		}
-
 		return event ^ BLE_TASK_OTA_WRITE_EVENT;
     }
 
@@ -427,7 +510,7 @@ static tmosEvents bleCentralTaskEventProcess(tmosTaskID taskID, tmosEvents event
 											20,
 											100,
 											0,
-											600);
+											100);
 				LogPrintf(DEBUG_BLE, "Dev(%d) Updataparam, ret:0x%02x", i, status);
 			}
 		}
@@ -436,15 +519,26 @@ static tmosEvents bleCentralTaskEventProcess(tmosTaskID taskID, tmosEvents event
 
     if (event & BLE_TASK_UPDATE_MTU_EVENT)
     {
+    	status = bleIncorrectMode;
 		for (uint8_t i = 0; i < DEVICE_MAX_CONNECT_COUNT; i++)
 		{
 			if (devInfoList[i].use &&
 				devInfoList[i].connHandle != INVALID_CONNHANDLE)
 			{
-				bleCentralChangeMtu(devInfoList[i].connHandle);
+				status = bleCentralChangeMtu(devInfoList[i].connHandle);
+				break;
 			}
 		}
+		if (status == blePending)
+		{
+			tmos_start_task(bleCentralTaskId, BLE_TASK_UPDATE_MTU_EVENT, MS1_TO_SYSTEM_TIME(100));	
+		}
 		return event ^ BLE_TASK_UPDATE_MTU_EVENT;
+    }
+
+    if (event & BLE_TASK_100MS_EVENT)
+    {
+		return event ^ BLE_TASK_100MS_EVENT;
     }
     return 0;
 }
@@ -754,8 +848,8 @@ uint8_t bleCentralRead(uint16_t connHandle, uint16_t attrHandle)
 {
 	attReadReq_t req;
 	bStatus_t ret;
-    req.handle = devInfoList[0].charHandle;
-    ret = GATT_ReadCharValue(devInfoList[0].connHandle, &req, bleCentralTaskId);
+    req.handle = attrHandle;
+    ret = GATT_ReadCharValue(connHandle, &req, bleCentralTaskId);
     LogPrintf(DEBUG_BLE, "bleCentralRead==>Ret:0x%02X", ret);
     return ret;
 }
@@ -767,7 +861,7 @@ uint8_t bleCentralRead(uint16_t connHandle, uint16_t attrHandle)
 @note
 **************************************************/
 
-static void bleCentralChangeMtu(uint16_t connHandle)
+bStatus_t bleCentralChangeMtu(uint16_t connHandle)
 {
 	bStatus_t ret;
     attExchangeMTUReq_t req = {
@@ -775,6 +869,7 @@ static void bleCentralChangeMtu(uint16_t connHandle)
     };
     ret = GATT_ExchangeMTU(connHandle, &req, bleCentralTaskId);
     LogPrintf(DEBUG_BLE, "bleCentralChangeMtu==>Ret:0x%02X", ret);
+    return ret;
 }
 
 /*--------------------------------------------------*/
@@ -834,13 +929,66 @@ int8_t bleDevConnAdd(uint8_t *addr, uint8_t addrType)
             devInfoList[i].startHandle     = 0;
             devInfoList[i].endHandle       = 0;
             devInfoList[i].use             = 1;
+            if (sysparam.relayUpgrade[i] != BLE_UPGRADE_FLAG)
+	        {
+				bleDevSetConnUuid(i, SERVICE_UUID, CHAR_UUID);
+	        }
+	        else
+	        {
+				bleDevSetConnUuid(i, OTA_SERVER_UUID, OTA_CHAR_UUID);
+	        }
             //不用添加devInfoList[i].discState = BLE_DISC_STATE_IDLE,由蓝牙状态回调来改写
-            LogPrintf(DEBUG_BLE, "bleDevConnAdd==>[%d]ok", i);
+            LogPrintf(DEBUG_BLE, "bleDevConnAdd(%d)==>ok", i);
             return i;
         }
     }
     return -1;
 }
+
+/**************************************************
+@bref       添加新的链接对象到指定链接列表中
+@param
+@return
+    >0      添加成功，返回所添加的位置
+    <0      添加失败
+@note
+**************************************************/
+
+int8_t bleDevConnAddIndex(uint8_t index, uint8_t *addr, uint8_t addrType)
+{
+   	if (devInfoList[index].use)
+	{
+		LogPrintf(DEBUG_BLE, "bleDevConnAddIndex(%d)==>Occupied", index);
+		return -1;
+	}
+    else
+    {
+        tmos_memcpy(devInfoList[index].addr, addr, 6);
+        devInfoList[index].addrType        = addrType;
+        devInfoList[index].connHandle      = INVALID_CONNHANDLE;
+        devInfoList[index].charHandle      = INVALID_CONNHANDLE;
+        devInfoList[index].notifyHandle    = INVALID_CONNHANDLE;
+        devInfoList[index].findServiceDone = 0;
+        devInfoList[index].findCharDone    = 0;
+        devInfoList[index].notifyDone      = 0;
+        devInfoList[index].connStatus      = 0;
+        devInfoList[index].startHandle     = 0;
+        devInfoList[index].endHandle       = 0;
+        devInfoList[index].use             = 1;
+        if (sysparam.relayUpgrade[index] != BLE_UPGRADE_FLAG)
+        {
+			bleDevSetConnUuid(index, SERVICE_UUID, CHAR_UUID);
+        }
+        else
+        {
+			bleDevSetConnUuid(index, OTA_SERVER_UUID, OTA_CHAR_UUID);
+        }
+        //不用添加devInfoList[i].discState = BLE_DISC_STATE_IDLE,由蓝牙状态回调来改写
+        LogPrintf(DEBUG_BLE, "bleDevConnAddIndex(%d)==>ok", index);
+        return index;
+    }
+}
+
 
 /**************************************************
 @bref       删除链接列表中的对象
@@ -859,6 +1007,8 @@ int8_t bleDevConnDel(uint8_t *addr)
         if (devInfoList[i].use && tmos_memcmp(addr, devInfoList[i].addr, 6) == TRUE)
         {
             devInfoList[i].use = 0;
+            devInfoList[i].findServiceUuid = 0;
+            devInfoList[i].findCharUuid    = 0;
             if (devInfoList[i].connHandle != INVALID_CONNHANDLE)
             {
                 bleCentralDisconnect(devInfoList[i].connHandle);
@@ -869,6 +1019,14 @@ int8_t bleDevConnDel(uint8_t *addr)
     return -1;
 }
 
+/**************************************************
+@bref       删除链接列表中的全部对象
+@param
+@return
+@note
+**************************************************/
+
+
 void bleDevConnDelAll(void)
 {
     uint8_t i;
@@ -876,14 +1034,38 @@ void bleDevConnDelAll(void)
     {
         if (devInfoList[i].use)
         {
-//            if (devInfoList[i].connHandle != INVALID_CONNHANDLE)
-//            {
-//                bleCentralDisconnect(devInfoList[i].connHandle);
-//            }
             devInfoList[i].use = 0;
+            devInfoList[i].findServiceUuid = 0;
+            devInfoList[i].findCharUuid    = 0;
         }
     }
 }
+
+/**************************************************
+@bref       设置连接的uuid
+@param
+    serUuid   服务uuid
+    charUuid  特征uuid
+@return
+@note
+**************************************************/
+
+static void bleDevSetConnUuid(uint8_t ind, uint16_t serUuid, uint16_t charUuid)
+{
+	if (devInfoList[ind].use)
+	{
+		devInfoList[ind].findServiceUuid = serUuid;
+      	devInfoList[ind].findCharUuid    = charUuid;
+      	LogPrintf(DEBUG_BLE, "bleDevSetConnUuid==>serUuid:0x%04x charUuid:0x%04x",
+      						  devInfoList[ind].findServiceUuid,
+      						  devInfoList[ind].findCharUuid);
+	}
+	else
+	{
+		LogPrintf(DEBUG_BLE, "bleDevSetConnUuid==>error");
+	}
+}
+
 /**************************************************
 @bref       链接成功，查找对象并赋值句柄
 @param
@@ -911,13 +1093,14 @@ static void bleDevConnSuccess(uint8_t *addr, uint16_t connHandle)
                 devInfoList[i].findServiceDone = 0;
                 devInfoList[i].findCharDone    = 0;
                 devInfoList[i].notifyDone      = 0;
+                ble_conn_now_id				   = i;
                 LogPrintf(DEBUG_BLE, "Get device conn handle [%d]", connHandle);
                 /* 更改MTU */
-                tmos_start_task(bleCentralTaskId, BLE_TASK_UPDATE_MTU_EVENT, MS1_TO_SYSTEM_TIME(2000));
+                tmos_start_task(bleCentralTaskId, BLE_TASK_UPDATE_MTU_EVENT, MS1_TO_SYSTEM_TIME(1600));
                 /* 更新参数 */
-                tmos_start_task(bleCentralTaskId, BLE_TASK_UPDATE_PARAM_EVENT, MS1_TO_SYSTEM_TIME(2000));
-                /*  */
-                tmos_start_task(bleCentralTaskId, BLE_TASK_SVC_DISCOVERY_EVENT, MS1_TO_SYSTEM_TIME(1000));
+                tmos_start_task(bleCentralTaskId, BLE_TASK_UPDATE_PARAM_EVENT, MS1_TO_SYSTEM_TIME(1800));
+                /* 查找服务 */
+                tmos_start_task(bleCentralTaskId, BLE_TASK_SVC_DISCOVERY_EVENT, MS1_TO_SYSTEM_TIME(800));
                 bleDevReadAllRssi();
                 return;
             }
@@ -960,7 +1143,10 @@ static void bleDevDisconnect(uint16_t connHandle)
             debug[12] = 0;
             LogPrintf(DEBUG_BLE, "bleDevDisconnect==>Device (%d)[%s] disconnect,Handle[%d]", i, debug, connHandle);
             //bleSchduleChangeFsm(BLE_SCHEDULE_IDLE);		//不能添加这个，因为可能存在正在连第二个链路而主机又想断开第一条链路
-            bleOtaInit();
+
+            /* 停止循环执行的tmos任务 */
+            tmos_stop_task(bleCentralTaskId, BLE_TASK_OTA_WRITE_EVENT);
+            tmos_stop_task(bleCentralTaskId, BLE_TASK_OTA_READ_EVENT);
             /* 表示已通过指令解绑 */
             if (devInfoList[i].use == 0)
             {
@@ -1081,31 +1267,25 @@ static void bleDevDiscoverServByUuid(void)
 {
 	uint8_t i;
     uint8_t uuid[2];
+    uint16_t serUuid;
     bStatus_t status;
     for (i = 0; i < DEVICE_MAX_CONNECT_COUNT; i++)
     {
         if (devInfoList[i].use && devInfoList[i].connHandle      != INVALID_CONNHANDLE
         					   && devInfoList[i].findServiceDone == 0
-        					   && devInfoList[i].discState       == BLE_DISC_STATE_CONN)
+        					   && devInfoList[i].discState       == BLE_DISC_STATE_CONN
+        					   && devInfoList[i].findServiceUuid != 0)
         {
-        	if (sysparam.relayUpgrade[i] == BLE_UPGRADE_FLAG)
-        	{
-	        	devInfoList[i].discState = BLE_DISC_STATE_SVC;
-	            uuid[0] = LO_UINT16(OTA_SERVER_UUID);
-	            uuid[1] = HI_UINT16(OTA_SERVER_UUID);
-	            status = GATT_DiscPrimaryServiceByUUID(devInfoList[i].connHandle, uuid, 2, bleCentralTaskId);
-	            LogPrintf(DEBUG_BLE, "Dev(%d)Discover Handle[%d]services by ota uuid[0x%04x],ret=0x%02X", 
-	            						i, devInfoList[i].connHandle, OTA_SERVER_UUID, status);
-            }
-            else
-            {
-	        	devInfoList[i].discState = BLE_DISC_STATE_SVC;
-	            uuid[0] = LO_UINT16(SERVICE_UUID);
-	            uuid[1] = HI_UINT16(SERVICE_UUID);
-	            status = GATT_DiscPrimaryServiceByUUID(devInfoList[i].connHandle, uuid, 2, bleCentralTaskId);
-	            LogPrintf(DEBUG_BLE, "Dev(%d)Discover Handle[%d]services by normal uuid[0x%04x],ret=0x%02X", 
-	            						i, devInfoList[i].connHandle, SERVICE_UUID, status);
-            }
+        	serUuid = devInfoList[i].findServiceUuid;
+			devInfoList[i].discState = BLE_DISC_STATE_SVC;
+			uuid[0] = LO_UINT16(serUuid);
+			uuid[1] = HI_UINT16(serUuid);
+			status = GATT_DiscPrimaryServiceByUUID(devInfoList[i].connHandle, uuid, 2, bleCentralTaskId);
+			LogPrintf(DEBUG_BLE, "Dev(%d)Discover Handle[%d]services by uuid[0x%04X],ret=0x%02X", 
+									i, 
+									devInfoList[i].connHandle, 
+									devInfoList[i].findServiceUuid, 
+									status);
             return;
         }
     }
@@ -1121,34 +1301,29 @@ static void bleDevDiscoverServByUuid(void)
 static void bleDevDiscoverCharByUuid(void)
 {
 	uint8_t i;
+	uint16_t charUuid;
 	attReadByTypeReq_t req;
 	bStatus_t status;
 	for (i = 0; i < DEVICE_MAX_CONNECT_COUNT; i++)
 	{
 		if (devInfoList[i].use && devInfoList[i].startHandle     != 0
 							   && devInfoList[i].findServiceDone == 1
-							   && devInfoList[i].discState       == BLE_DISC_STATE_SVC)
+							   && devInfoList[i].discState       == BLE_DISC_STATE_SVC
+							   && devInfoList[i].findCharUuid    != 0)
 		{
 			devInfoList[i].discState = BLE_DISC_STATE_CHAR;
+			charUuid = devInfoList[i].findCharUuid;
 			req.startHandle = devInfoList[i].startHandle;
             req.endHandle   = devInfoList[i].endHandle;
             req.type.len    = ATT_BT_UUID_SIZE;
-            if (sysparam.relayUpgrade[i] == BLE_UPGRADE_FLAG)
-            {
-				req.type.uuid[0] = LO_UINT16(OTA_CHAR_UUID);
-	            req.type.uuid[1] = HI_UINT16(OTA_CHAR_UUID);
-	            status = GATT_ReadUsingCharUUID(devInfoList[i].connHandle, &req, bleCentralTaskId);
-            	LogPrintf(DEBUG_BLE, "Dev(%d)Discover handle[%d]chars by ota uuid[0x%04X],ret=0x%02X", 
-            				          i, devInfoList[i].connHandle, OTA_CHAR_UUID, status);
-            }
-            else
-            {
-	            req.type.uuid[0] = LO_UINT16(CHAR_UUID);
-	            req.type.uuid[1] = HI_UINT16(CHAR_UUID);
-	            status = GATT_ReadUsingCharUUID(devInfoList[i].connHandle, &req, bleCentralTaskId);
-            	LogPrintf(DEBUG_BLE, "Dev(%d)Discover handle[%d]chars by normal uuid[0x%04X],ret=0x%02X", 
-            						  i, devInfoList[i].connHandle, CHAR_UUID, status);
-            }
+        	req.type.uuid[0] = LO_UINT16(charUuid);
+            req.type.uuid[1] = HI_UINT16(charUuid);
+            status = GATT_ReadUsingCharUUID(devInfoList[i].connHandle, &req, bleCentralTaskId);
+        	LogPrintf(DEBUG_BLE, "Dev(%d)Discover handle[%d]chars by uuid[0x%04X],ret=0x%02X", 
+        				          i, 
+        				          devInfoList[i].connHandle, 
+        				          devInfoList[i].findCharUuid, 
+        				          status);
 			return;
 		}
 	}
@@ -1234,14 +1409,12 @@ static void bleDevConnectComplete(uint16_t connHandle)
 		{
 			devInfoList[i].discState  = BLE_DISC_STATE_COMP;
 			devInfoList[i].otaStatus  = 1;
-			//devInfoList[i].notifyDone = 1;				//不置0就不会发送app指令
+			//devInfoList[i].notifyDone = 1;				//不置1就不会发送app指令
 			bleSchduleChangeFsm(BLE_SCHEDULE_DONE);
-			LogPrintf(DEBUG_BLE, "Dev(%d)Handle[%d] skip notify and connect finish", i, connHandle);
-			bleOtaFsmChange(BLE_OTA_FSM_IDLE);
-
+			ble_ota_tick = 0;
+			LogPrintf(DEBUG_BLE, "Dev(%d)handle[%d] skip notify and connect finish", i, connHandle);
 			/* 如果OTA设备已经处于IAP状态了，那么normal蓝牙的ota指令可能会一直在发送，这里需要再次清除normal蓝牙的发送事件 */
 			bleRelayClearReq(i, BLE_EVENT_ALL);
-
 		}
 	}
 }
@@ -1296,11 +1469,11 @@ void bleDevTerminateProcess(void)
     for (i = 0; i < DEVICE_MAX_CONNECT_COUNT; i++)
     {
         if (((devInfoList[i].use && devInfoList[i].connPermit == 0) ||
-        	devInfoList[i].use == 0) &&
-        	devInfoList[i].connHandle != INVALID_CONNHANDLE) 
+	          devInfoList[i].use == 0) &&
+	          devInfoList[i].connHandle != INVALID_CONNHANDLE) 
         {
             status = GAPRole_TerminateLink(devInfoList[i].connHandle);
-            LogPrintf(DEBUG_BLE, "bleDevTerminateProcess==>Dev(%d)Terminate Handle[%d]", i, devInfoList[i].connHandle);
+            LogPrintf(DEBUG_BLE, "bleDevTerminateProcess==>Dev(%d)Handle[%d] Terminate,status:0x%02x", i, devInfoList[i].connHandle, status);
             return;
         }
     }
@@ -1315,14 +1488,33 @@ void bleDevTerminateProcess(void)
 
 static void bleDevInsertTask(void)
 {
+	/* 如果有要升级的设备直接添加该设备，另一台不管 */
+	if (getBleOtaStatus() >= 0)
+	{
+		if (devInfoList[getBleOtaStatus()].use == 0)
+		{
+			/* 这个状态标志很关键，必须等到蓝牙协议栈断连回调产生才能把设备添加进来 */
+			if (devInfoList[getBleOtaStatus()].connHandle == INVALID_CONNHANDLE)
+			{
+				bleRelayInsertIndex(getBleOtaStatus(), sysparam.bleConnMac[getBleOtaStatus()], 0);
+				fileRxInfo *info = getOtaInfo();
+				if (info->totalsize == 0)
+				{
+					otaRxInfoInit(1, sysparam.file.fileName, sysparam.file.fileSize);
+				}
+			}
+		}
+		return;
+	}
 	for (uint8_t i = 0; i < sysparam.bleMacCnt; i++)
 	{
 		if (devInfoList[i].use == 0)
 		{
+			/* 这个状态标志很关键，必须等到蓝牙协议栈断连回调产生才能把设备添加进来 */
 			if (devInfoList[i].connHandle == INVALID_CONNHANDLE)
 			{
-				LogPrintf(DEBUG_BLE, "蓝牙添加");
-				bleRelayInsert(sysparam.bleConnMac[i], 0);
+				LogPrintf(DEBUG_BLE, "蓝牙添加链接列表");
+				bleRelayInsertIndex(i, sysparam.bleConnMac[i], 0);
 			}
 		}
 	}
@@ -1339,8 +1531,6 @@ void bleDevReadAllRssi(void)
 {
 	tmos_start_task(bleCentralTaskId, BLE_TASK_READ_RSSI_EVENT, MS1_TO_SYSTEM_TIME(1500));
 }
-
-
 
 /**************************************************
 @bref       通过地址查找对象
@@ -1504,7 +1694,7 @@ int bleDevGetIdByHandle(uint16_t connHandle)
 }
 
 /**************************************************
-@bref       通过指针找到ota状态
+@bref       通过指针获取ota状态
 @param
 @return
 @note
@@ -1539,9 +1729,10 @@ static void bleSchduleChangeFsm(bleFsm nfsm)
 static void bleScheduleTask(void)
 {
     static uint8_t ind = 0;
-	bleDevInsertTask();
+	
 	bleConnPermissonManger();
 	bleDevTerminateProcess();
+	bleDevInsertTask();
     switch (bleSchedule.fsm)
     {
     	case BLE_SCHEDULE_IDLE:
@@ -1565,7 +1756,7 @@ static void bleScheduleTask(void)
             if (bleSchedule.runTick >= 15)
             {
                 //链接超时
-                LogPrintf(DEBUG_BLE, "bleSchedule==>timeout!!!");
+                LogPrintf(DEBUG_BLE, "bleSchedule(%d)[%d]==>timeout!!!", ind, devInfoList[ind].connHandle);
                 bleCentralDisconnect(devInfoList[ind].connHandle);
                 bleSchduleChangeFsm(BLE_SCHEDULE_DONE);
                 if (sysinfo.logLevel == 4)
@@ -1601,17 +1792,16 @@ void bleConnTypeChange(uint8_t type, uint8_t index)
 	{
 		for (uint8_t i = 0; i < DEVICE_MAX_CONNECT_COUNT; i++)
 		{
-			sysparam.relayUpgrade[i] = 0;
+		    sysparam.relayUpgrade[i] = 0;
 		}
 	}
 	else
 	{
-		sysparam.relayUpgrade[index] = BLE_UPGRADE_FLAG;
+	    sysparam.relayUpgrade[index] = BLE_UPGRADE_FLAG;
 	}
 	LogPrintf(DEBUG_BLE, "bleConnTypeChange==>%s", type ? "normal" : "ota");
 	paramSaveAll();
 }
-
 
 /**************************************************
 @bref       ota接收数据初始化
@@ -1620,9 +1810,129 @@ void bleConnTypeChange(uint8_t type, uint8_t index)
 @note
 **************************************************/
 
-void otaRxInfoInit(void)
+void otaRxInfoInit(uint8_t onoff, uint8_t *file, uint32_t total)
 {
-	tmos_memset(&otaRxInfo, 0, sizeof(ota_package_t));
+	if (onoff)
+	{
+		sysinfo.bleUpgradeOnoff = 1;
+		tmos_memset(&otaRxInfo, 0, sizeof(fileRxInfo));
+		if (file != NULL)
+		{
+			strncpy(otaRxInfo.fileName, file, 20);
+			otaRxInfo.fileName[strlen(file)] = 0;
+		}
+		otaRxInfo.readLen   = 240;
+		otaRxInfo.totalsize = total;
+		bleOtaFsmChange(BLE_OTA_FSM_IDLE);
+		LogPrintf(DEBUG_BLE, "otaRxInfoInit==>Startup, file:%s, size:%d", file, total);
+	}
+	else
+	{
+		sysinfo.bleUpgradeOnoff = 0;
+		tmos_memset(&otaRxInfo, 0, sizeof(fileRxInfo));
+		bleOtaFsmChange(BLE_OTA_FSM_IDLE);
+		LogPrintf(DEBUG_BLE, "otaRxInfoInit==>Close, size:%d", file, total);
+	}
+}
+
+
+/**************************************************
+@bref       获取ota信息
+@param
+@return
+@note
+**************************************************/
+
+fileRxInfo *getOtaInfo(void)
+{
+	return &otaRxInfo;
+}
+
+
+/**************************************************
+@bref		执行升级
+@param
+	upgradeResult  执行类型
+	offset		   当前地址
+	size 		   单包长度
+@return
+@note
+**************************************************/
+
+void upgradeResultProcess(uint8_t upgradeResult, uint32_t offset, uint32_t size)
+{
+	/* 编程部分 */
+    if (upgradeResult == 0)
+    {
+        otaRxInfo.rxoffset = offset + size;
+        LogPrintf(DEBUG_BLE, "upgradeResultProcess==>rxoffset:%d", otaRxInfo.rxoffset);
+        LogPrintf(DEBUG_BLE, ">>>>>>>>>> rx progress %.1f%% <<<<<<<<<<",
+                  ((float)otaRxInfo.rxoffset / otaRxInfo.totalsize) * 100);
+        if (otaRxInfo.rxoffset == otaRxInfo.totalsize)
+        {
+        	/* 开始校验 */
+            bleOtaFsmChange(BLE_OTA_FSM_VERI_READ);
+            LogPrintf(DEBUG_BLE, "Program ok!!!!!!!!!");
+        }
+        else if (otaRxInfo.rxoffset > otaRxInfo.totalsize)
+        {
+            LogMessage(DEBUG_ALL, "Recevie complete ,but total size is different,retry again\n");
+            otaRxInfo.totalsize = 0;
+            bleOtaFsmChange(BLE_OTA_FSM_INFO);
+        }
+        else
+        {
+			bleOtaFsmChange(BLE_OTA_FSM_READ);
+        }
+    }
+    /* 校验部分 */
+    else if (upgradeResult == 1)
+    {
+		otaRxInfo.veroffset = offset + size;
+        LogPrintf(DEBUG_BLE, "upgradeResultProcess==>veroffset:%d", otaRxInfo.veroffset);
+        LogPrintf(DEBUG_BLE, ">>>>>>>>>> ver progress %.1f%% <<<<<<<<<<",
+                  ((float)otaRxInfo.veroffset / otaRxInfo.totalsize) * 100);
+        if (otaRxInfo.veroffset == otaRxInfo.totalsize)
+        {
+        	/* 开始校验 */
+            bleOtaFsmChange(BLE_OTA_FSM_END);
+            LogPrintf(DEBUG_BLE, "Verify ok!!!!!!!!!");
+        }
+        else if (otaRxInfo.veroffset > otaRxInfo.totalsize)
+        {
+            LogMessage(DEBUG_ALL, "Recevie complete ,but total size is different,retry again\n");
+            otaRxInfo.totalsize = 0;
+            bleOtaFsmChange(BLE_OTA_FSM_INFO);
+        }
+        else
+        {
+			bleOtaFsmChange(BLE_OTA_FSM_VERI_READ);
+        }
+    }
+    else
+    {
+        LogPrintf(DEBUG_ALL, "Writing firmware error at 0x%X\n", otaRxInfo.rxoffset);
+        //upgradeServerChangeFsm(NETWORK_DOWNLOAD_ERROR);
+    }
+
+}
+
+
+/**************************************************
+@bref       
+@param
+@return
+@note
+**************************************************/
+
+int8_t getBleOtaStatus(void)
+{
+	for (uint8_t i = 0; i < DEVICE_MAX_CONNECT_COUNT; i++)
+	{
+		if (sysparam.relayUpgrade[i] == BLE_UPGRADE_FLAG)
+			return i;
+	}
+	return -1;
 }
 
 /**************************************************
@@ -1646,24 +1956,14 @@ ble_ota_fsm_e getBleOtaFsm(void)
 
 void bleOtaFsmChange(ble_ota_fsm_e fsm)
 {
-	ble_ota_fsm = fsm;
+	ble_ota_fsm  = fsm;
+	ble_ota_tick = 0;
 	LogPrintf(DEBUG_BLE, "bleOtaFsmChange==>%d", ble_ota_fsm);
 }
 
-/**************************************************
-@bref       蓝牙ota初始化
-@param
-@return
-@note
-**************************************************/
-
-void bleOtaInit(void)
-{
-	bleOtaFsmChange(BLE_OTA_FSM_IDLE);
-}
 
 /**************************************************
-@bref       蓝牙数据封装
+@bref       蓝牙编程数据封装
 @param
 @return
 @note
@@ -1671,21 +1971,45 @@ void bleOtaInit(void)
 
 void bleOtaFilePackage(ota_package_t file)
 {
-	if (ble_ota_fsm != BLE_OTA_FSM_PROM)
+	if (ble_ota_fsm != BLE_OTA_FSM_READ && ble_ota_fsm != BLE_OTA_FSM_PROM)
 	{
 		LogPrintf(DEBUG_UP, "bleOtaFilePackage==>OTA FSM ERROR");
 		return;
 	}
-	otaRxInfo.offset = file.offset;	//当前接收文件长度
-	otaRxInfo.len    = file.len;	//此包文件的长度
-	uint16_t prom_addr = (IMAGE_A_START_ADD + file.offset) / 16;
+	otaRxInfo.len      = file.len;	    //此包文件的长度
+	uint16_t prom_addr = (IMAGE_A_START_ADD + otaRxInfo.rxoffset) / 16;
 	iap_send_buff.program.cmd     = CMD_IAP_PROM;
 	iap_send_buff.program.len     = file.len;
 	iap_send_buff.program.addr[0] = (prom_addr >> 8) & 0xff;
 	iap_send_buff.program.addr[1] =  prom_addr & 0xff;
 	tmos_memcpy(iap_send_buff.program.buf, file.data, iap_send_buff.program.len);
-	bleOtaSend();
+	bleOtaFsmChange(BLE_OTA_FSM_PROM);
 }
+
+/**************************************************
+@bref       蓝牙校验数据封装
+@param
+@return
+@note
+**************************************************/
+
+void bleVerifyFilePackage(ota_package_t file)
+{
+	if (ble_ota_fsm != BLE_OTA_FSM_VERI_READ && ble_ota_fsm != BLE_OTA_FSM_VERI)
+	{
+		LogPrintf(DEBUG_UP, "bleVerifyFilePackage==>OTA FSM ERROR");
+		return;
+	}
+	otaRxInfo.len      = file.len;	    //此包文件的长度
+	uint16_t prom_addr = (IMAGE_A_START_ADD + otaRxInfo.veroffset) / 16;
+	iap_send_buff.verify.cmd     = CMD_IAP_VERIFY;
+	iap_send_buff.verify.len     = file.len;
+	iap_send_buff.verify.addr[0] = (prom_addr >> 8) & 0xff;
+	iap_send_buff.verify.addr[1] =  prom_addr & 0xff;
+	tmos_memcpy(iap_send_buff.verify.buf, file.data, iap_send_buff.verify.len);
+	bleOtaFsmChange(BLE_OTA_FSM_VERI);
+}
+
 
 /**************************************************
 @bref       蓝牙Ota发送协议
@@ -1703,6 +2027,8 @@ uint8_t bleOtaSendProtocol(uint16_t connHandle, uint16_t charHandle)
 	char message[255] = { 0 };
 	uint8_t size_len;
 	uint8_t send_len;
+	uint8_t block_num   = 0;
+	uint16_t erase_addr = 0;
 	tmos_memset(&iap_send_data, 0, sizeof(OTA_IAP_CMD_t));
 	switch (ble_ota_fsm)
 	{
@@ -1714,7 +2040,6 @@ uint8_t bleOtaSendProtocol(uint16_t connHandle, uint16_t charHandle)
 			iap_send_data.info.len = 12;
 			send_len 			   = 12;
 			break;
-		
 		case BLE_OTA_FSM_PROM:
 			iap_send_data.program.cmd     = CMD_IAP_PROM;
 			iap_send_data.program.len     = iap_send_buff.program.len;
@@ -1726,8 +2051,23 @@ uint8_t bleOtaSendProtocol(uint16_t connHandle, uint16_t charHandle)
 		/*
 			81 00 00 01 0b 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
 		*/
-		//这里务必确保擦除正确
+		//这里务必确保擦除地址正确
 		case BLE_OTA_FSM_EASER:
+			/* 擦除起始地址写死,目标设备会乘16 */
+			erase_addr = IMAGE_A_START_ADD / 16;
+			iap_send_buff.erase.addr[0] = (erase_addr >> 8) & 0xff;
+			iap_send_buff.erase.addr[1] =  erase_addr & 0xff;
+			LogPrintf(DEBUG_BLE, "IMAGEA ADDR:0x%02X%02X", iap_send_buff.erase.addr[0], 
+														   iap_send_buff.erase.addr[1]);
+			block_num = otaRxInfo.totalsize / EEPROM_BLOCK_SIZE;
+			if (otaRxInfo.totalsize % EEPROM_BLOCK_SIZE != 0)
+			{
+				block_num++;
+			}
+			iap_send_buff.erase.block_num[0] = 0;
+			iap_send_buff.erase.block_num[1] = block_num;
+			LogPrintf(DEBUG_BLE, "ERASE BLOCK NUM:%d%d", iap_send_buff.erase.block_num[1],
+														 iap_send_buff.erase.block_num[0]);
 			iap_send_data.erase.cmd     	 = CMD_IAP_ERASE;
 			iap_send_data.erase.len     	 = 0;
 			iap_send_data.erase.addr[0] 	 = iap_send_buff.erase.addr[1];
@@ -1735,9 +2075,19 @@ uint8_t bleOtaSendProtocol(uint16_t connHandle, uint16_t charHandle)
 			iap_send_data.erase.block_num[0] = iap_send_buff.erase.block_num[1];
 			iap_send_data.erase.block_num[1] = iap_send_buff.erase.block_num[0];
 			send_len 						 = 20;
+			if (otaRxInfo.totalsize >= 102400)
+			{
+				tmos_stop_task(bleCentralTaskId, BLE_TASK_OTA_WRITE_EVENT);
+				return 0;
+			}
 			break;
 		case BLE_OTA_FSM_VERI:
-			
+			iap_send_data.verify.cmd     = CMD_IAP_VERIFY;
+			iap_send_data.verify.len     = iap_send_buff.verify.len;
+			iap_send_data.verify.addr[0] = iap_send_buff.verify.addr[1];
+			iap_send_data.verify.addr[1] = iap_send_buff.verify.addr[0];
+			tmos_memcpy(iap_send_data.verify.buf, iap_send_buff.verify.buf, iap_send_data.verify.len);
+			send_len					  = iap_send_buff.verify.len + 4;
 			break;
 		case BLE_OTA_FSM_END:
 			iap_send_data.end.cmd	= CMD_IAP_END;
@@ -1746,26 +2096,37 @@ uint8_t bleOtaSendProtocol(uint16_t connHandle, uint16_t charHandle)
 			break;
 		default:
 			iap_send_data.info.cmd = CMD_IAP_ERR;
+			send_len               = 0;
+			LogPrintf(DEBUG_BLE, "send error");
 			break;
 	}
 	size_len = send_len > 127 ? 127 : send_len;
 	byteToHexString((uint8_t *)iap_send_data.other.buf, (uint8_t *)message, size_len);
 	message[size_len * 2] = 0;
 	LogPrintf(DEBUG_BLE, "ble send [%d]:%s", size_len, message);
-	if (bleCentralSend(connHandle, charHandle, iap_send_data.other.buf, send_len) == SUCCESS )
+	if (bleCentralSend(connHandle, charHandle, iap_send_data.other.buf, send_len) == SUCCESS)
 	{
 		tmos_stop_task(bleCentralTaskId, BLE_TASK_OTA_WRITE_EVENT);
 		if (ble_ota_fsm == BLE_OTA_FSM_END)
 		{
-			upgradeServerChangeFsm(NETWORK_DOWNLOAD_END);
-			bleOtaFsmChange(BLE_OTA_FSM_FINISH);
+			LogPrintf(DEBUG_BLE, "Ble ota finish");
+			sysinfo.bleUpgradeOnoff = 0;
+			for (uint8_t i = 0; i < DEVICE_MAX_CONNECT_COUNT; i++)
+			{
+			    sysparam.relayUpgrade[i] = 0;
+			}
+			otaRxInfoInit(0, NULL, 0);
+			tmos_memset(&sysparam.file, 0, sizeof(fileInfo_s));
+			paramSaveAll();
+			/* 注意这里不能立马断，会导致从机接收不到 */
+			startTimer(10, bleRelayDeleteAll, 0);
+			bleOtaFsmChange(BLE_OTA_FSM_IDLE);
 		}
 		else
 		{
-			tmos_start_reload_task(bleCentralTaskId, BLE_TASK_OTA_READ_EVENT, MS1_TO_SYSTEM_TIME(100));
+			tmos_start_reload_task(bleCentralTaskId, BLE_TASK_OTA_READ_EVENT, MS1_TO_SYSTEM_TIME(BLE_WRITE_OR_READ_MS));
 		}
 	}
-
 	return ret;
 }
 
@@ -1781,7 +2142,6 @@ void bleOtaReadDataParser(uint16_t connHandle, OTA_IAP_CMD_t iap_read_data, uint
 	int ind;
 	uint8_t  block_num    = 0;
     uint32_t image_b_addr = 0;
-    uint16_t erase_addr   = 0;
     uint16_t block_size   = 0;
     uint16_t chip_id      = 0;
     static uint8_t errcnt = 0;
@@ -1789,6 +2149,7 @@ void bleOtaReadDataParser(uint16_t connHandle, OTA_IAP_CMD_t iap_read_data, uint
 	{
 		return;
 	}
+	
 	ind = bleDevGetIdByHandle(connHandle);
 	if (ind >= DEVICE_MAX_CONNECT_COUNT || ind < 0)
 	{
@@ -1811,88 +2172,256 @@ void bleOtaReadDataParser(uint16_t connHandle, OTA_IAP_CMD_t iap_read_data, uint
 			image_b_addr  |= iap_read_data.other.buf[2];
 			image_b_addr <<= 8;
 			image_b_addr  |= iap_read_data.other.buf[1];
-			/* 擦除起始地址写死,目标设备会乘16 */
-			erase_addr = IMAGE_A_START_ADD / 16;
-			iap_send_buff.erase.addr[0] = (erase_addr >> 8) & 0xff;
-			iap_send_buff.erase.addr[1] =  erase_addr & 0xff;
-			LogPrintf(DEBUG_BLE, "IMAGEA ADDR:0x%02X%02X", iap_send_buff.erase.addr[0], 
-														   iap_send_buff.erase.addr[1]);
 			LogPrintf(DEBUG_BLE, "IMAGEB ADDR:0x%04X", image_b_addr);
 			block_size   = iap_read_data.other.buf[6];
 			block_size <<= 8;
 			block_size  |= iap_read_data.other.buf[5];
 			LogPrintf(DEBUG_BLE, "ONE BLOCK SIZE:%d", block_size);
-			block_num = getFileTotalSize() / EEPROM_BLOCK_SIZE;
-			if (getFileTotalSize() % EEPROM_BLOCK_SIZE != 0)
-			{
-				block_num++;
-			}
-			iap_send_buff.erase.block_num[0] = 0;
-			iap_send_buff.erase.block_num[1] = block_num;
-			LogPrintf(DEBUG_BLE, "ERASE BLOCK NUM:%d%d", iap_send_buff.erase.block_num[1],
-														 iap_send_buff.erase.block_num[0]);
 			chip_id   = iap_read_data.other.buf[8];
 			chip_id <<= 8;
 			chip_id  |= iap_read_data.other.buf[7];
 			LogPrintf(DEBUG_BLE, "CHIP ID:0x%04X", chip_id);
+			if (chip_id == 0x73)
+			{
+				block_num = otaRxInfo.totalsize / EEPROM_BLOCK_SIZE;
+				if (block_num > 11)
+				{
+					LogPrintf(DEBUG_BLE, "earse block num[%d] is more than CH573 max", block_num);
+					bleOtaFsmChange(BLE_OTA_FSM_END);
+				}
+			}
+			else if (chip_id == 0x92)
+			{
+				block_num = otaRxInfo.totalsize / EEPROM_BLOCK_SIZE;
+				if (block_num > 100)
+				{
+					{
+						LogPrintf(DEBUG_BLE, "earse block num[%d] is more than CH592 max", block_num);
+						bleOtaFsmChange(BLE_OTA_FSM_END);
+					}
+				}
+			}
 			LogPrintf(DEBUG_BLE, "-------------------------------------");
 			if (iap_read_data.other.buf[0] == 2)
 			{
 				bleOtaFsmChange(BLE_OTA_FSM_EASER);
-				bleOtaSend();
 			}
 			else
 			{
-				upgradeServerCancel();
-				bleOtaFsmChange(BLE_OTA_FSM_END);
-				bleOtaSend();
+				bleOtaFsmChange(BLE_OTA_FSM_END_ERR);
 			}
 			break;
 		case BLE_OTA_FSM_EASER:
 			if (iap_read_data.other.buf[0] == 0x00)
 			{
-				bleOtaFsmChange(BLE_OTA_FSM_PROM);
-				upgradeServerChangeFsm(NETWORK_DOWNLOAD_DOING);
+				bleOtaFsmChange(BLE_OTA_FSM_READ);				
 			}
 			else 
 			{
 				LogPrintf(DEBUG_BLE, "The file is too large. Erasing failed");
-				upgradeServerCancel();
-				bleOtaFsmChange(BLE_OTA_FSM_END);
-				bleOtaSend();
+				bleOtaFsmChange(BLE_OTA_FSM_END_ERR);
 			}
 			break;
 		case BLE_OTA_FSM_PROM:
 			if (iap_read_data.other.buf[0] == 0x00)
 			{
-				upgradeResultProcess(0, otaRxInfo.offset, otaRxInfo.len);
+				upgradeResultProcess(0, otaRxInfo.rxoffset, otaRxInfo.len);
 				errcnt = 0;
 			}
 			else
 			{
 				LogPrintf(DEBUG_BLE, "The file write error");
-				bleOtaSend();
 				errcnt++;
 				if (errcnt >= 5)
 				{
 					//这里服务器的状态需不需要发送cmd=3还待考虑
-					upgradeServerCancel();
-					bleOtaFsmChange(BLE_OTA_FSM_END);
-					bleOtaSend();
+					bleOtaFsmChange(BLE_OTA_FSM_END_ERR);
 					errcnt = 0;
 				}
 			}
 			break;
+		case BLE_OTA_FSM_VERI:
+			if (iap_read_data.other.buf[0] == 0x00)
+			{
+				upgradeResultProcess(1, otaRxInfo.veroffset, otaRxInfo.len);
+				errcnt = 0;
+			}
+			else
+			{
+				bleOtaFsmChange(BLE_OTA_FSM_VERI_READ);
+				errcnt++;
+				if (errcnt >= 5)
+				{
+					LogPrintf(DEBUG_BLE, "The file verify error");
+					bleOtaFsmChange(BLE_OTA_FSM_INFO);
+				}
+			}
+			break;
 		case BLE_OTA_FSM_END:
-
+			
 			break;
 	}
 	
 }
 
+/**************************************************
+@bref       蓝牙ota发数据
+@param
+@return
+@note
+**************************************************/
+
 void bleOtaSend(void)
 {
-	tmos_start_reload_task(bleCentralTaskId, BLE_TASK_OTA_WRITE_EVENT, MS1_TO_SYSTEM_TIME(100));
+	tmos_start_reload_task(bleCentralTaskId, BLE_TASK_OTA_WRITE_EVENT, MS1_TO_SYSTEM_TIME(BLE_WRITE_OR_READ_MS));
+}
+
+
+/**************************************************
+@bref       蓝牙ota任务
+@param
+@return
+@note
+**************************************************/
+
+#define OTA_TIMEBASE_MULTIPLE			10
+void bleOtaTask(void)
+{
+	uint16_t readlen;
+	if (sysinfo.bleUpgradeOnoff == 0)
+	{
+		return;
+	}
+	if (getBleOtaStatus() < 0 || getBleOtaStatus() >= DEVICE_MAX_CONNECT_COUNT)
+	{
+		ble_ota_fsm = BLE_OTA_FSM_IDLE;
+		return;
+	}
+	/* 断连不重置状态 */
+	if (bleDevGetOtaStatusByIndex(getBleOtaStatus()) == 0)
+	{
+		//LogPrintf(DEBUG_BLE, "bleOtaTask==>waitting connect");
+		return;
+	}
+	/* 载入升级包信息才能通过 */
+	if (otaRxInfo.totalsize == 0)
+	{
+		return;
+	}
+	switch (ble_ota_fsm)
+	{
+		case BLE_OTA_FSM_IDLE:
+			if (otaRxInfo.totalsize != 0)
+			{
+				bleOtaSend();
+				bleOtaFsmChange(BLE_OTA_FSM_INFO);
+			}
+			/* 没配置升级文件就跑到这里来 */
+			else
+			{
+				
+			}
+			break;
+		case BLE_OTA_FSM_INFO:
+			if (ble_ota_tick == 0)
+			{
+				bleOtaSend();
+			}
+			if (ble_ota_tick >= 10 * OTA_TIMEBASE_MULTIPLE)
+			{
+				bleOtaFsmChange(BLE_OTA_FSM_IDLE);
+				bleRelayDeleteAll();
+			}
+			break;
+		case BLE_OTA_FSM_EASER:
+			if (ble_ota_tick == 0)
+			{
+				bleOtaSend();
+			}
+			if (ble_ota_tick >= 10 * OTA_TIMEBASE_MULTIPLE)
+			{
+				bleOtaFsmChange(BLE_OTA_FSM_IDLE);
+				bleRelayDeleteAll();
+			}
+			break;
+		case BLE_OTA_FSM_READ:
+			if (ble_ota_tick == 0)
+			{
+				readlen = otaRxInfo.totalsize - otaRxInfo.rxoffset;
+				if (readlen > otaRxInfo.readLen)
+				{
+					readlen = otaRxInfo.readLen;
+				}
+	            fileReadData(otaRxInfo.fileName, readlen, otaRxInfo.rxoffset);
+			}
+			if (ble_ota_tick >= 10 * OTA_TIMEBASE_MULTIPLE)
+			{
+
+				readlen = otaRxInfo.totalsize - otaRxInfo.rxoffset;
+				if (readlen > otaRxInfo.readLen)
+				{
+					readlen = otaRxInfo.readLen;
+				}
+	            fileReadData(otaRxInfo.fileName, readlen, otaRxInfo.rxoffset);
+			}
+			break;	
+		case BLE_OTA_FSM_PROM:
+			if (ble_ota_tick == 0)
+			{
+				bleOtaSend();
+			}
+			if (ble_ota_tick >= 20 * OTA_TIMEBASE_MULTIPLE)
+			{
+				bleOtaFsmChange(BLE_OTA_FSM_READ);
+			}
+			break;
+		case BLE_OTA_FSM_VERI_READ:
+			if (ble_ota_tick == 0)
+			{
+				readlen = otaRxInfo.totalsize - otaRxInfo.veroffset;
+				if (readlen > otaRxInfo.readLen)
+				{
+					readlen = otaRxInfo.readLen;
+				}
+	            fileReadData(otaRxInfo.fileName, readlen, otaRxInfo.veroffset);
+			}
+			if (ble_ota_tick >= 10 * OTA_TIMEBASE_MULTIPLE)
+			{
+				readlen = otaRxInfo.totalsize - otaRxInfo.veroffset;
+				if (readlen > otaRxInfo.readLen)
+				{
+					readlen = otaRxInfo.readLen;
+				}
+	            fileReadData(otaRxInfo.fileName, readlen, otaRxInfo.veroffset);
+			}
+			break;
+		case BLE_OTA_FSM_VERI:
+			if (ble_ota_tick == 0)
+			{
+				bleOtaSend();
+			}
+			if (ble_ota_tick >= 20 * OTA_TIMEBASE_MULTIPLE)
+			{
+				bleOtaFsmChange(BLE_OTA_FSM_VERI_READ);
+			}
+			break;
+		/* 只有全部正确才能到达这里 */
+		case BLE_OTA_FSM_END:
+			if (ble_ota_tick == 0)
+			{
+				bleOtaSend();
+			}
+			if (ble_ota_tick >= 20)
+			{
+				bleOtaSend();
+			}
+			break;
+		/* 异常退出不发送END指令 */
+		case BLE_OTA_FSM_END_ERR:
+			
+			break;
+	}
+	ble_ota_tick++;
 }
 
 

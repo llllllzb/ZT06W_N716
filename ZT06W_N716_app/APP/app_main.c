@@ -45,7 +45,7 @@ int main(void)
     myTaskPreInit();
     CH58X_BLEInit();
     HAL_Init();
-    //appPeripheralInit();
+    appPeripheralInit();
     bleCentralInit();
     myTaskInit();
     Main_Circulation();

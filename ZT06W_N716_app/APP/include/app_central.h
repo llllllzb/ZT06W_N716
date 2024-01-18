@@ -11,6 +11,7 @@
 #include "config.h"
 #include "app_bleRelay.h"
 #include "app_protocol.h"
+#include "app_file.h"
 
 //通用继电器UUID
 #define SERVICE_UUID                    0xFFE0
@@ -21,6 +22,8 @@
 #define OTA_CHAR_UUID					0xFEE1
 
 #define DEVICE_MAX_CONNECT_COUNT        2
+
+#define BLE_WRITE_OR_READ_MS			100
 
 //OTA起始地址
 #define IMAGE_A_START_ADD			    0x1000
@@ -35,6 +38,7 @@
 #define BLE_TASK_OTA_READ_EVENT			0x0080
 #define BLE_TASK_UPDATE_PARAM_EVENT		0x1000
 #define BLE_TASK_UPDATE_MTU_EVENT		0x2000
+#define BLE_TASK_100MS_EVENT			0x4000
 
 #define BLE_ID_0						0
 #define BLE_ID_1						1
@@ -62,6 +66,8 @@ typedef struct
     uint8_t  otaStatus		 :1;
     uint8_t  addr[6];
     uint8_t  addrType;
+    uint16_t findServiceUuid;
+    uint16_t findCharUuid;
     uint16_t connHandle;
     uint16_t startHandle;
     uint16_t endHandle;
@@ -105,8 +111,10 @@ typedef enum
 	BLE_OTA_FSM_EASER,
 	BLE_OTA_FSM_PROM,
 	BLE_OTA_FSM_VERI,
+	BLE_OTA_FSM_VERI_READ,
 	BLE_OTA_FSM_END,
-	BLE_OTA_FSM_FINISH,
+	BLE_OTA_FSM_READ,
+	BLE_OTA_FSM_END_ERR,
 }ble_ota_fsm_e;
 
 
@@ -132,20 +140,24 @@ deviceConnInfo_s *bleDevGetInfoById(uint8_t id);
 void bleDevReadAllRssi(void);
 int bleDevGetOtaStatusByIndex(uint8_t index);
 int8_t bleDevConnAdd(uint8_t *addr, uint8_t addrType);
+int8_t bleDevConnAddIndex(uint8_t index, uint8_t *addr, uint8_t addrType);
 int8_t bleDevConnDel(uint8_t *addr);
 void bleDevConnDelAll(void);
 void bleOtaFsmChange(ble_ota_fsm_e fsm);
-void otaRxInfoInit(void);
+void otaRxInfoInit(uint8_t onoff, uint8_t *file, uint32_t total);
+void bleVerifyFilePackage(ota_package_t file);
 
-void bleOtaInit(void);
+
 ble_ota_fsm_e getBleOtaFsm(void);
 void bleOtaSend(void);
 void bleOtaFilePackage(ota_package_t file);
 void bleConnTypeChange(uint8_t type, uint8_t index);
-
+fileRxInfo *getOtaInfo(void);
+int8_t getBleOtaStatus(void);
 
 void bleOtaReadDataParser(uint16_t connHandle, OTA_IAP_CMD_t iap_read_data, uint16_t len);
 uint8_t bleOtaSendProtocol(uint16_t connHandle, uint16_t charHandle);
 
+void bleOtaTask(void);
 
 #endif /* APP_INCLUDE_APP_CENTRAL_H_ */

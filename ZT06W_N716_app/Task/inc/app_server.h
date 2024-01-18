@@ -29,15 +29,10 @@ typedef enum
     NETWORK_DOWNLOAD_DOING,			//3
     NETWORK_DOWNLOAD_WAIT,			//4
     
-	NETWORK_MCU_START_UPGRADE,		//5
-	NETWORK_MCU_CONNECT,			//6
-	NETWORK_MCU_WAIT,				//7
-    NETWORK_FIRMWARE_WRITE_DOING,	//8
 
-    NETWORK_DOWNLOAD_DONE,			//9
-    NETWORK_MCU_COMPLETE,			//10
-    NETWORK_DOWNLOAD_ERROR,
-    NETWORK_WAIT_JUMP,
+    NETWORK_DOWNLOAD_DONE,			//5
+    NETWORK_VERIFY_LENGTH,			//6
+    NETWORK_VERIFY_ERROR,
     NETWORK_DOWNLOAD_END
 } UpgradeFsmState;
 
@@ -83,6 +78,7 @@ typedef struct
 	uint8_t         getVerCount;
 	uint16_t 		runTick;
 	uint8_t 		index;
+	uint32_t		fileSize;
 	
 }upgrade_Connect_s;
 

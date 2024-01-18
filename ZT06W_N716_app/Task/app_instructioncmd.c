@@ -13,6 +13,7 @@
 #include "app_server.h"
 #include "app_jt808.h"
 #include "app_mir3da.h"
+#include "app_file.h"
 const instruction_s insCmdTable[] =
 {
     {PARAM_INS, "PARAM"},
@@ -54,7 +55,6 @@ const instruction_s insCmdTable[] =
     {CENTER_INS, "CENTER"},
     {SOSALM_INS, "SOSALM"},
     {TIMER_INS, "TIMER"},
-    {QGMR_INS, "QGMR"},
     {MOTIONDET_INS, "MOTIONDET"},
     {FCG_INS, "FCG"},
     {QFOTA_INS, "QFOTA"},
@@ -70,7 +70,11 @@ const instruction_s insCmdTable[] =
 	{SIMSEL_INS, "SIMSEL"},
 	{READVERSION_INS, "READVERSION"},
 	{SETTXPOWER_INS, "SETTXPOWER"},
-	{BLEUPS_INS, "BLEUPS"},
+	{FILE_INS, "FILE"},
+	{BTFLIST_INS, "BTFLIST"},
+    {BTFDEL_INS, "BTFDEL"},
+    {BTFDOWNLOAD_INS, "BTFDOWNLOAD"},
+    {BTFUPS_INS, "BTFUPS"},
     {SN_INS, "*"},
 };
 
@@ -1114,6 +1118,11 @@ static void doReadParamInstruction(ITEM *item, char *message)
     bleRelayInfo_s *bleinfo;
     deviceConnInfo_s *devinfo;
     cnt = 0;
+    if (getBleOtaStatus() >= 0)
+    {
+		sprintf(message, "Dev(%d) is not ready ", getBleOtaStatus());
+		return;
+    }
     bleDevReadAllRssi();
     for (i = 0; i < BLE_CONNECT_LIST_SIZE; i++)
     {
@@ -1195,9 +1204,10 @@ static void doSetBleWarnParamInstruction(ITEM *item, char *message)
             if (bleinfo != NULL)
             {
                 cnt++;
-                sprintf(message + strlen(message), "(%d:[%.2f,%d,%d]) ", i, bleinfo->preV_threshold / 100.0,
+                sprintf(message + strlen(message), "(%d:[%.2f,%d,%d,%d]) ", i, bleinfo->preV_threshold / 100.0,
                         bleinfo->preDetCnt_threshold,
-                        bleinfo->preHold_threshold);
+                        bleinfo->preHold_threshold,
+                        bleinfo->fastPreVDetTime);
             }
         }
         if (cnt == 0)
@@ -1207,24 +1217,29 @@ static void doSetBleWarnParamInstruction(ITEM *item, char *message)
     }
     else
     {
-        sysparam.blePreShieldVoltage = atoi(item->item_data[1]);
-        sysparam.blePreShieldDetCnt = atoi(item->item_data[2]);
-        sysparam.blePreShieldHoldTime = atoi(item->item_data[3]);
-        if (sysparam.blePreShieldDetCnt >= 60)
-        {
-            sysparam.blePreShieldDetCnt = 30;
-        }
-        else if (sysparam.blePreShieldDetCnt == 0)
-        {
-            sysparam.blePreShieldDetCnt = 10;
-        }
-        if (sysparam.blePreShieldHoldTime == 0)
-        {
-            sysparam.blePreShieldHoldTime = 1;
-        }
+    	if (item->item_data[1][0] != 0)
+        	sysparam.blePreShieldVoltage = atoi(item->item_data[1]);
+        if (item->item_data[2][0] != 0)
+        	sysparam.blePreShieldDetCnt = atoi(item->item_data[2]);
+        if (item->item_data[3][0] != 0)
+        	sysparam.blePreShieldHoldTime = atoi(item->item_data[3]);
+        if (item->item_data[4][0] != 0)
+        	sysparam.blefastShieldTime = atoi(item->item_data[4]);
+//        if (sysparam.blePreShieldDetCnt >= 60)
+//        {
+//            sysparam.blePreShieldDetCnt = 30;
+//        }
+//        else if (sysparam.blePreShieldDetCnt == 0)
+//        {
+//            sysparam.blePreShieldDetCnt = 10;
+//        }
+//        if (sysparam.blePreShieldHoldTime == 0)
+//        {
+//            sysparam.blePreShieldHoldTime = 1;
+//       }
         paramSaveAll();
-        sprintf(message, "Update ble warnning param to %d,%d,%d", sysparam.blePreShieldVoltage, sysparam.blePreShieldDetCnt,
-                sysparam.blePreShieldHoldTime);
+        sprintf(message, "Update ble warnning param to %d,%d,%d,%d", sysparam.blePreShieldVoltage, sysparam.blePreShieldDetCnt,
+                sysparam.blePreShieldHoldTime, sysparam.blefastShieldTime);
         for (i = 0; i < BLE_CONNECT_LIST_SIZE; i++)
         {
             bleinfo = bleRelayGeInfo(i);
@@ -1237,15 +1252,6 @@ static void doSetBleWarnParamInstruction(ITEM *item, char *message)
         }
         bleRelaySetAllReq(BLE_EVENT_SET_PRE_PARAM | BLE_EVENT_GET_PRE_PARAM);
     }
-}
-
-static void setBleMacCallback(void)
-{
-	for (uint8_t ind = 0; ind < sysparam.bleMacCnt; ind++)
-	{
-		bleRelayInsert(sysparam.bleConnMac[ind], 0);
-		//如果调用断连指令10秒后协议栈还未返回断连回调函数，强行改回连接状态
-	}
 }
 
 static void doSetBleMacInstruction(ITEM *item, char *message)
@@ -1627,10 +1633,6 @@ void doSosAlmInstruction(ITEM *item, char *message)
     }
 }
 
-static void doQgmrInstruction(ITEM *item, char *message)
-{
-    sprintf(message, "ModuleVersion:[%s]", getQgmr());
-}
 
 static void doQfotaInstruction(ITEM *item, char *message)
 {
@@ -1961,35 +1963,283 @@ static void doSetTxPowerInstruction(ITEM *item, char *message)
 	
 }
 
+
 /**************************************************
-@bref       蓝牙继电器升级指令
+@bref       升级文件下载
 @param
 @return
 @note
-BLEUPS,1,47.106.81.204,9998,1
-BLEUPS,99	//取消
 **************************************************/
 
-static void doBleUPSInstruction(ITEM *item, char *message)
+static void doFileInstruction(ITEM *item, char *message)
 {
+	fileInfo_s *file;
 	uint8_t i;
-	bleRelayInfo_s *bleinfo;
+	uint8_t num;
+	uint8_t index = 0;
+	file = getFileList(&num);
+	fileQueryList();
 	if (item->item_data[1][0] == 0 || item->item_data[1][0] == '?')
 	{
-		if (sysinfo.updateStatus)
+		if (sysparam.updateStatus)
 		{
-			LogPrintf(DEBUG_ALL, ">>>>>>>>>> Completed progress %.1f%% <<<<<<<<<<",
+			sprintf(message, ">>>>>>>>>> Download [%s]completed progress %.1f%% <<<<<<<<<<", getNewCodeVersion(),
                   ((float)getRxfileOffset() / getFileTotalSize()) * 100);
 		}
 		else
 		{
-			strcpy(message, "Please enter ble ups param");
+
+			for (i = 0; i < num; i++)
+			{
+				sprintf(message + strlen(message), "[file(%d):%s, size:%d bytes]\n", i, file[i].fileName, file[i].fileSize);
+			}
 		}
 	}
 	else
 	{
-		uint8_t index; 
-		index = atoi(item->item_data[4]);
+
+		if (strncmp(item->item_data[1], "A", strlen(item->item_data[1])) == 0 ||
+			strncmp(item->item_data[1], "a", strlen(item->item_data[1])) == 0)
+		{
+			if (sysparam.updateStatus)
+			{
+				strcpy(message, "Forbidden operation, file is downloading");
+				return;
+			}
+			if (sysinfo.bleUpgradeOnoff)
+			{
+				strcpy(message, "Ble was upgrading");
+				return;
+			}
+			if (item->item_data[2][0] != 0)
+			{
+				strncpy(sysparam.upgradeServer, item->item_data[2], 50);
+				sysparam.upgradeServer[49] = 0;
+			}
+			if (item->item_data[3][0] != 0)
+			{
+				sysparam.upgradePort = atoi(item->item_data[3]);
+			}
+			sprintf(message, "Device will download the firmware from %s:%d in 5 seconds", sysparam.upgradeServer,
+			sysparam.upgradePort);
+			upgradeServerInit(0);
+			paramSaveAll();
+
+		}
+		else if (strncmp(item->item_data[1], "D", strlen(item->item_data[1])) == 0 ||
+			     strncmp(item->item_data[1], "d", strlen(item->item_data[1])) == 0)
+		{
+			if (sysparam.updateStatus)
+			{
+				strcpy(message, "Download server is already open");
+				return;
+			}
+			if (strlen(item->item_data[2]) == 0)
+			{
+				strcpy(message, "Please enter file param which you want to delete");
+				return;
+			}
+			if (strlen(item->item_data[2]) <= 2 && strlen(item->item_data[2]) > 0)
+			{
+				index = atoi(item->item_data[2]);
+				if (index >= num)
+				{
+					strcpy(message, "file number is error");
+					return;
+				}
+				fileDelete(file[index].fileName);
+				sprintf(message, "Delete file[%s] success", file[index].fileName);
+			}
+			else
+			{
+				for (i = 0; i < num; i++)
+				{
+					if (strncmp(file[i].fileName, item->item_data[2], strlen(item->item_data[2])) == 0)
+						break;
+				}
+				if (num == i)
+				{
+					strcpy(message, "file name is error");
+					return;
+				}
+				else
+				{
+					fileDelete(item->item_data[2]);
+					sprintf(message, "Delete file[%s] success", item->item_data[2]);
+				}
+			}
+			
+			fileQueryList();
+		}
+		else if (strncmp(item->item_data[1], "S", strlen(item->item_data[1])) == 0 ||
+			     strncmp(item->item_data[1], "s", strlen(item->item_data[1])) == 0)
+		{
+			upgradeServerCancel();
+			strcpy(message, "File download cancel");
+		}
+		else
+		{
+			strcpy(message, "Invalid option");
+		}
+
+	}
+}
+
+/**************************************************
+@bref       升级文件列表
+@param
+@return
+@note
+**************************************************/
+
+static void doBtfListInstruction(ITEM *item, char *message)
+{
+	fileInfo_s *file;
+	uint8_t i;
+	uint8_t num;
+	file = getFileList(&num);
+	fileQueryList();
+	strcpy(message, "Bt firmware list:\r\n");
+	for (i = 0; i < num; i++)
+	{
+		sprintf(message + strlen(message), "[file(%d):%s, size:%d bytes]\n", 
+											 i, 
+											 file[i].fileName, 
+											 file[i].fileSize);
+	}
+}
+
+/**************************************************
+@bref       升级文件全部删除
+@param
+@return
+@note
+**************************************************/
+
+static void doBtfDelInstruction(ITEM *item, char *message)
+{
+	if (sysparam.updateStatus)
+	{
+		strcpy(message, "Forbidden operation,device was downloading bt firmware");
+		return;
+	}
+	fileInfo_s *file;
+	uint8_t i;
+	uint8_t num;
+	file = getFileList(&num);
+	for (i = 0; i < num; i++)
+	{
+		fileDelete(file[i].fileName);
+	}
+	fileQueryList();
+	moduleFileInfoClear();
+	strcpy(message, "Delete all bt firmware success");
+}
+
+/**************************************************
+@bref       升级文件下载
+@param
+@return
+@note
+**************************************************/
+
+static void doBtfDownloadInstruction(ITEM *item, char *message)
+{
+	fileRxInfo *info = getOtaInfo();
+
+	/* 强行关闭文件下载服务器 */
+	if (atoi(item->item_data[1]) == 99)
+	{
+		/* 文件下载配置 */
+		if (item->item_data[2][0] != 0)
+		{
+			strncpy(sysparam.upgradeServer, item->item_data[2], 50);
+			sysparam.upgradeServer[49] = 0;
+		}
+		if (item->item_data[3][0] != 0)
+		{
+			sysparam.upgradePort = atoi(item->item_data[3]);
+		}
+		sprintf(message, "Device will download bt firmware from %s:%d after 5 seconds", sysparam.upgradeServer,
+																						sysparam.upgradePort);
+		upgradeServerInit(0);
+
+		return;
+	}
+	if (item->item_data[1][0] == '0')
+	{
+		upgradeServerCancel();
+		strcpy(message, "File download cancel");
+		return;
+	}
+	/* 文件正在下载 */
+	if (sysparam.updateStatus)
+	{
+		sprintf(message, "Download [%s]completed progress: %.1f%%", 
+						  getNewCodeVersion(),
+                          ((float)getRxfileOffset() / getFileTotalSize()) * 100);
+		return;
+	}
+	/* 文件正在传输 */
+	if (sysinfo.bleUpgradeOnoff)
+	{
+		strcpy(message, "Dev was upgrading");
+		return;
+	}
+	/* 文件下载配置 */
+	if (item->item_data[1][0] != 0)
+	{
+		strncpy(sysparam.upgradeServer, item->item_data[1], 50);
+		sysparam.upgradeServer[49] = 0;
+	}
+	if (item->item_data[2][0] != 0)
+	{
+		sysparam.upgradePort = atoi(item->item_data[2]);
+	}
+	sprintf(message, "Device will download bt firmware from %s:%d after 5 seconds", sysparam.upgradeServer,
+																				    sysparam.upgradePort);
+	upgradeServerInit(0);
+}
+
+/**************************************************
+@bref       升级文件传入蓝牙继电器
+@param
+@return
+@note
+**************************************************/
+
+static void doBtfUpsInstruction(ITEM *item, char *message)
+{
+	uint8_t i;
+	int j;
+	bleRelayInfo_s *bleinfo;
+	fileInfo_s *file;
+	uint8_t num;
+	uint8_t ind;
+	int8_t index; 
+	fileRxInfo *info = getOtaInfo();
+	if (item->item_data[1][0] == 0 || item->item_data[1][0] == '?')
+	{
+		if (sysinfo.bleUpgradeOnoff)
+		{
+			sprintf(message, "Dev(%d)upgrade[%s]completed progress: %.1f%%",
+					getBleOtaStatus(), info->fileName, ((float)info->rxoffset / info->totalsize) * 100);
+		}
+		else
+		{
+			for (i = 0; i < sysparam.bleMacCnt; i++)
+			{
+				bleinfo = bleRelayGeInfo(i);
+				if (bleinfo != NULL)
+				{
+					sprintf(message + strlen(message), "Dev(%d) Version:%s\n", i, bleinfo->version);
+				}
+			}
+		}
+	}
+	else
+	{
+		/* 特殊指令 */
 		if (atoi(item->item_data[1]) == 99)
 		{
 			for (i = 0; i < DEVICE_MAX_CONNECT_COUNT; i++)
@@ -1997,44 +2247,141 @@ static void doBleUPSInstruction(ITEM *item, char *message)
 				if (sysparam.relayUpgrade[i] == BLE_UPGRADE_FLAG)
 				{
 					bleRelayDeleteAll();
-					upgradeServerCancel();
-					//startTimer(100, setBleMacCallback, 0);
 					sysparam.relayUpgrade[i] = 0;
 				}
 			}
-			sysinfo.updateStatus = 0;
-			strcpy(message, "Ble ups cancel");
+			if (item->item_data[2][0] != 0)
+			{
+				index = atoi(item->item_data[2]);
+				file = getFileList(&num);
+				ind  = atoi(item->item_data[3]);
+				j = my_getstrindex(file[ind].fileName, "BR", 2);
+				if (j < 0)
+				{
+					sprintf(message, "Bt firmware is error [%s]", file[ind].fileName);
+					return;
+				}
+				if (file[i].fileSize >= 102400)
+				{
+					sprintf(message, "Bt firmware[%s] is too big", file[i].fileName, file[i].fileSize);
+					return;
+				}
+				strncpy(sysparam.file.fileName, file[ind].fileName, 20);
+				sysparam.file.fileName[strlen(file[ind].fileName)] = 0;
+				sysparam.file.fileSize = file[ind].fileSize;
+				paramSaveAll();
+				otaRxInfoInit(1, file[ind].fileName, file[ind].fileSize);
+				sprintf(message, "Dev(%d) will download the %s after 5 seconds",
+								  index, file[ind].fileName);
+				bleinfo = bleRelayGeInfo(index);
+				if (bleinfo != NULL)
+				{
+					bleRelayClearAllReq(BLE_EVENT_ALL);
+					bleRelaySetReq(index, BLE_EVENT_OTA);
+				}
+			}
+			else
+			{
+				otaRxInfoInit(0, NULL, 0);
+				tmos_memset(&sysparam.file, 0, sizeof(fileInfo_s));
+				paramSaveAll();
+				strcpy(message, "Ble ups cancel");
+			}
 		}
+		/* 常规指令 */
 		else
 		{
-			if (sysinfo.updateStatus)
+			index = atoi(item->item_data[1]);
+			if (sysparam.updateStatus)
 			{
-				sprintf(message, "Upgrade server is already open");
+				strcpy(message, "Device was downloading ota file");
 				return;
 			}
-
 			if (index >= DEVICE_MAX_CONNECT_COUNT)
 			{
 				strcpy(message, "Dev number is error");
 				return;
 			}
-			sysinfo.updateStatus = 1;
-			strncpy(sysparam.upgradeServer, item->item_data[2], 50);
-			sysparam.upgradeServer[49] = 0;
-			sysparam.upgradePort = atoi(item->item_data[3]);
-			sprintf(message, "Ble device will download the firmware from %s:%d in 5 seconds", sysparam.upgradeServer,
-            sysparam.upgradePort);
-        	bleinfo = bleRelayGeInfo(index);
-        	
-        	if (bleinfo != NULL)
-        	{
-				updateUISVersion(bleinfo->version);
-				upgradeServerInit(index);
-        	}
+			if (getBleOtaStatus() >= 0)
+			{
+				sprintf(message, "Dev(%d) is download the firmware now,please try it later", getBleOtaStatus());
+				return;
+			}
+			file = getFileList(&num);
+			if (strlen(item->item_data[2]) <= 2 && strlen(item->item_data[2]) > 0)
+			{
+				ind  = atoi(item->item_data[2]);
+				j = my_getstrindex(file[ind].fileName, "BR", 2);
+				if (j < 0)
+				{
+					sprintf(message, "Bt firmware is error [%s]", file[ind].fileName);
+					return;
+				}
+				if (file[i].fileSize >= 102400)
+				{
+					sprintf(message, "Bt firmware[%s] is too big", file[i].fileName, file[i].fileSize);
+					return;
+				}
+				strncpy(sysparam.file.fileName, file[ind].fileName, 20);
+				sysparam.file.fileName[strlen(file[ind].fileName)] = 0;
+				sysparam.file.fileSize = file[ind].fileSize;
+				paramSaveAll();
+				otaRxInfoInit(1, file[ind].fileName, file[ind].fileSize);
+				sprintf(message, "Dev(%d) will download the %s after 5 seconds",
+								  index, file[ind].fileName);
+				bleinfo = bleRelayGeInfo(index);
+				if (bleinfo != NULL)
+				{
+					bleRelayClearAllReq(BLE_EVENT_ALL);
+					bleRelaySetReq(index, BLE_EVENT_OTA);
+				}
+			}
+			else
+			{
+				for (i = 0; i < num; i++)
+				{
+					if (strncmp(file[i].fileName, item->item_data[2], strlen(item->item_data[2])) == 0)
+						break;
+				}
+				if (num == i)
+				{
+					strcpy(message, "file name is error");
+					return;
+				}
+				else
+				{
+					j = my_getstrindex(file[ind].fileName, "BR", 2);
+					if (j < 0)
+					{
+						sprintf(message, "Bt firmware[%s]is error", file[i].fileName);
+						return;
+					}
+					if (file[i].fileSize >= 102400)
+					{
+						sprintf(message, "Bt firmware[%s] is too big", file[i].fileName, file[i].fileSize);
+						return;
+					}
+					otaRxInfoInit(1, file[i].fileName, file[i].fileSize);
+					sprintf(message, "Dev(%d) will download the %s after 5 seconds",
+								      index, file[i].fileName);
+					strncpy(sysparam.file.fileName, file[ind].fileName, 20);
+					sysparam.file.fileName[strlen(file[ind].fileName)] = 0;
+					sysparam.file.fileSize = file[ind].fileSize;
+					paramSaveAll();
+					bleinfo = bleRelayGeInfo(index);
+					if (bleinfo != NULL)
+					{
+						bleRelayClearAllReq(BLE_EVENT_ALL);
+						bleRelaySetReq(index, BLE_EVENT_OTA);
+					}
+				}
+			}
 		}
 		paramSaveAll();
 	}
 }
+
+
 
 /*--------------------------------------------------------------------------------------*/
 static void doinstruction(int16_t cmdid, ITEM *item, insMode_e mode, void *param)
@@ -2170,9 +2517,6 @@ static void doinstruction(int16_t cmdid, ITEM *item, insMode_e mode, void *param
         case SOSALM_INS:
             doSosAlmInstruction(item, message);
             break;
-        case QGMR_INS:
-            doQgmrInstruction(item, message);
-            break;
         case QFOTA_INS:
             doQfotaInstruction(item, message);
             break;
@@ -2215,8 +2559,20 @@ static void doinstruction(int16_t cmdid, ITEM *item, insMode_e mode, void *param
 		case SETTXPOWER_INS:
 			doSetTxPowerInstruction(item, message);
 			break;
-		case BLEUPS_INS:
-			doBleUPSInstruction(item, message);
+		case FILE_INS:
+			doFileInstruction(item, message);
+			break;
+		case BTFLIST_INS:
+			doBtfListInstruction(item, message);
+			break;
+		case BTFDEL_INS:
+			doBtfDelInstruction(item, message);
+			break;
+		case BTFDOWNLOAD_INS:
+			doBtfDownloadInstruction(item, message);
+			break;
+		case BTFUPS_INS:
+			doBtfUpsInstruction(item, message);
 			break;
         default:
             if (mode == SMS_MODE)

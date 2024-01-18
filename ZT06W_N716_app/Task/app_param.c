@@ -95,12 +95,13 @@ void paramDefaultInit(uint8_t level)
     dynamicParam.noNmeaRstCnt = 0;
     sysparam.sosalm = ALARM_TYPE_NONE;
 	sysparam.ldrEn = 1;
-    sysparam.bleRfThreshold = 140;
+    sysparam.bleRfThreshold = 135;
     sysparam.bleOutThreshold = 1320;
     sysparam.bleAutoDisc = 0;
-    sysparam.blePreShieldVoltage = 140;
+    sysparam.blePreShieldVoltage = 120;
     sysparam.blePreShieldDetCnt = 10;
-    sysparam.blePreShieldHoldTime = 1;
+    sysparam.blePreShieldHoldTime = 30;
+    sysparam.blefastShieldTime = 3;
     sysparam.relaySpeed = 20;
     sysparam.protectVoltage = 4.6;
     sysparam.bf = 0;
@@ -123,8 +124,6 @@ void paramDefaultInit(uint8_t level)
 	sysparam.uncapalm=1;
 	sysparam.uncapLock=0;
 	sysparam.txPower = LL_TX_POWEER_5_DBM;
-	sysparam.relayUpgrade[0] = 0;
-	sysparam.relayUpgrade[1] = 0;
 	dynamicParam.sim = 1;
     paramSaveAll();
     dynamicParamSaveAll();

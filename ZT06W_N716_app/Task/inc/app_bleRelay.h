@@ -40,6 +40,8 @@
 #define CMD_SEND_SHIELD_LOCK_ALARM			0x19  //发送屏蔽锁车报警
 #define CMD_RES_SHIELD_LOCK_ALRAM			0x20  //屏蔽锁车应答
 #define CMD_CLEAR_SHIELD_LOCK_ALRAM			0x21  //清除屏蔽锁车事件
+#define CMD_SEND_FAST_SHIELD_ALARM			0x22  //发送快速屏蔽报警
+#define CMD_CLEAR_FAST_SHIELD_ALARM			0x23  //清除快速屏蔽报警
 
 
 #define CMD_SET_TXPOWER             		0xA7  //发射功率控制
@@ -88,7 +90,7 @@
 #define BLE_EVENT_VERSION		  0x00400000 //读取继电器Version
 #define BLE_EVENT_OTA			  0x00800000 //OTA
 
-#define BLE_EVENT_OTA_PROM		  0x08000000
+#define BLE_EVENT_CLR_FAST_ALARM  0x01000000 //清除快速预报警
 #define BLE_EVENT_OTA_EARSE		  0x10000000
 #define BLE_EVENT_OTA_VERIFY	  0x20000000
 #define BLE_EVENT_OTA_END	  	  0x40000000
@@ -124,8 +126,9 @@ typedef struct
     uint8_t preV_threshold;         //预警阈值
     uint8_t preDetCnt_threshold;    //预警检测次数
     uint8_t preHold_threshold;      //预警保持
+    uint8_t fastPreVDetTime;		//快速预屏蔽检测时间
     uint8_t disc_threshold;         //断连阈值
-    uint8_t version[20];			//继电器版本
+    uint8_t version[25];			//继电器版本
     uint8_t upgradeFlag;			//是否需要升级状态
 } bleRelayInfo_s;
 
@@ -193,6 +196,7 @@ bleRelayInfo_s *bleRelayGeInfo(uint8_t i);
 void bleRelayDeleteAll(void);
 void bleRelayInit(void);
 int8_t bleRelayInsert(uint8_t *addr, uint8_t addrType);
+int8_t bleRelayInsertIndex(uint8_t index, uint8_t *addr, uint8_t addrType);
 void bleRelayRecvParser(uint16_t connHandle, uint8_t *data, uint8_t len);
 void bleRelaySendDataTry(void);
 void blePeriodTask(void);

@@ -17,17 +17,17 @@
 
 
 //4GÄ£×éÉæ¼°IO
-#define POWER_SUPPLY_PIN
-#define PORT_POWER_SUPPLY_ON
-#define PORT_POWER_SUPPLY_OFF
+#define POWER_SUPPLY_PIN			GPIO_Pin_10
+#define PORT_POWER_SUPPLY_ON		GPIOB_SetBits(POWER_SUPPLY_PIN)
+#define PORT_POWER_SUPPLY_OFF		GPIOB_ResetBits(POWER_SUPPLY_PIN)
 
 #define POWER_PIN                   GPIO_Pin_11	//PB11
 #define PORT_PWRKEY_H               GPIOB_ResetBits(POWER_PIN)
 #define PORT_PWRKEY_L               GPIOB_SetBits(POWER_PIN)
 
-#define RST_PIN                     GPIO_Pin_10	//PB10
-#define PORT_RSTKEY_H               GPIOB_ResetBits(RST_PIN)
-#define PORT_RSTKEY_L               GPIOB_SetBits(RST_PIN)
+#define RST_PIN                     
+#define PORT_RSTKEY_H               
+#define PORT_RSTKEY_L               
 
 
 #define DTR_PIN                     GPIO_Pin_15

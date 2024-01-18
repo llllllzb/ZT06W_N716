@@ -3,7 +3,7 @@
 #include <stdint.h>
 
 #include "app_sys.h"
-
+#include "app_file.h"
 
 /*
  * DataFlash 分布
@@ -140,8 +140,10 @@ typedef struct
 	uint8_t uncapLock;
 	uint8_t bleMacCnt;
 	uint8_t txPower;
-	uint8_t relayUpgrade[2];
-
+	uint8_t updateStatus;
+	uint8_t relayUpgrade[2];	//表示设备需要升级，一旦设置，在设备升级完成或者手动取消之前都不会置0
+	fileInfo_s file;
+	uint8_t blefastShieldTime;
 } systemParam_s;
 
 /*存在EEPROM里的动态参数*/

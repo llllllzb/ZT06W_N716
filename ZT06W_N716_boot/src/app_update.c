@@ -370,17 +370,27 @@ static void protoclparaseF3(uint8_t *protocol, int size)
             LogPrintf(DEBUG_ALL, "My SN:[%s]", uis.rxsn);
             LogPrintf(DEBUG_ALL, "My Ver:[%s]", uis.rxcurCODEVERSION);
             LogPrintf(DEBUG_ALL, "New Ver:[%s]", uis.newCODEVERSION);
-            upgradeFsmChange(NETWORK_DOWNLOAD_DOING);
-            if (uis.rxfileOffset == 0)
+            int index = my_getstrindex(uis.newCODEVERSION, "ZT06W", 5);
+            if (index >= 0)
             {
-                /*
-                 * 代码擦除
-                 */
-                flashEarseByFileSize(APPLICATION_ADDRESS, uis.file_totalsize);
+	            upgradeFsmChange(NETWORK_DOWNLOAD_DOING);
+	            if (uis.rxfileOffset == 0)
+	            {
+	                /*
+	                 * 代码擦除
+	                 */
+	                flashEarseByFileSize(APPLICATION_ADDRESS, uis.file_totalsize);
+	            }
+	            else
+	            {
+	                LogMessage(DEBUG_ALL, "Update firmware continute");
+	            }
             }
             else
             {
-                LogMessage(DEBUG_ALL, "Update firmware continute");
+				LogMessage(DEBUG_ALL, "Error update file");
+	            paramSaveUpdateStatus(0);
+	            startTimer(1000, startJumpToApp, 1);
             }
         }
         else
@@ -622,7 +632,7 @@ static void timeOutCheck(void)
 @return
 @note
 **************************************************/
-
+#define UPGRADE_TIMEBASE_MULTIPLE		5
 void upgradeRunTask(void)
 {
     uint8_t cmd;
@@ -660,7 +670,7 @@ void upgradeRunTask(void)
             break;
         case NETWORK_LOGIN_WAIT:
             //等待登录返回，30秒内任未连上，则继续重连
-            if (netconnect.runtick > 30)
+            if (netconnect.runtick > 30 * UPGRADE_TIMEBASE_MULTIPLE)
             {
                 netconnect.loginCount++;
                 upgradeFsmChange(NETWORK_LOGIN);
@@ -673,7 +683,7 @@ void upgradeRunTask(void)
             break;
         case NETWORK_LOGIN_READY:
             //登录后获取新软件版本，未获取，每隔30秒重新获取
-            if (netconnect.runtick % 30 == 0)
+            if (netconnect.runtick % (30 * UPGRADE_TIMEBASE_MULTIPLE) == 0)
             {
                 cmd = 1;
                 protocolSend(PROTOCOL_F3, &cmd);
@@ -696,7 +706,7 @@ void upgradeRunTask(void)
         case NETWORK_DOWNLOAD_WAIT:
             //等下固件下载，超过30秒未收到数据，重新发送下载协议
             LogMessage(DEBUG_ALL, "Waitting firmware data...");
-            if (netconnect.runtick > 45)
+            if (netconnect.runtick > 45 * UPGRADE_TIMEBASE_MULTIPLE)
             {
                 upgradeFsmChange(NETWORK_DOWNLOAD_DOING);
             }
@@ -717,7 +727,7 @@ void upgradeRunTask(void)
             break;
         case NETWORK_WAIT_JUMP:
             //18秒任未跳转，则重新下载
-            if (netconnect.runtick > 10)
+            if (netconnect.runtick > 10 * UPGRADE_TIMEBASE_MULTIPLE)
             {
                 upgradeFsmChange(NETWORK_LOGIN);
 

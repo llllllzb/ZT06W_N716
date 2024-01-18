@@ -18,7 +18,7 @@
 #define SLEEPMODULE			DTR_HIGH
 
 
-#define GPSSAVEFILE			"gpssave.bat"
+#define FILE_MAX_CNT		8
 
 
 #define FILE_READ_SIZE		400
@@ -99,7 +99,8 @@ typedef enum
 	TCPREAD_CMD,
 	SIMCROSS_CMD,
 	READADC_CMD,
-	CLIP_CMD
+	CLIP_CMD,
+	FSFS_CMD,
 } atCmdType_e;
 
 
@@ -133,6 +134,11 @@ typedef struct cmdNode
 } cmdNode_s;
 
 
+typedef struct
+{
+	uint8_t  fileName[20];
+	uint16_t fileSize;
+}fileInfo_s;
 
 typedef struct
 {
@@ -157,7 +163,7 @@ typedef struct
 
     uint8_t curQirdId;
     uint8_t rdyQirdId;
-
+	uint8_t curSendId;
 
     uint8_t fsmState;
     uint8_t cmd;
@@ -173,7 +179,6 @@ typedef struct
 
 
     uint8_t mnc;
-    uint8_t qgmr[50];
     uint16_t mcc;
     uint16_t lac;
 
@@ -185,7 +190,8 @@ typedef struct
     uint32_t tcpAck;
     uint32_t tcpNack;
     uint32_t fsmtick;
-
+	fileInfo_s  file[FILE_MAX_CNT];
+	uint8_t  fileNum;
 } moduleState_s;
 
 typedef struct
@@ -219,6 +225,7 @@ void moduleRecvParser(uint8_t *buf, uint16_t bufsize);
 void netResetCsqSearch(void);
 int socketSendData(uint8_t link, uint8_t *data, uint16_t len);
 void moduleSleepCtl(uint8_t onoff);
+void moduleFileInfoClear(void);
 
 void moduleGetCsq(void);
 void moduleGetLbs(void);
@@ -230,7 +237,10 @@ void querySendData(uint8_t link);
 void queryBatVoltage(void);
 
 uint8_t isAgpsDataRecvComplete(void);
+fileInfo_s* getFileList(uint8_t *num);
 
+
+uint8_t compareFile(uint8_t *file, uint8_t len);
 
 uint8_t getModuleRssi(void);
 uint8_t *getModuleIMSI(void);
@@ -241,8 +251,6 @@ uint8_t getMNC(void);
 uint16_t getLac(void);
 uint32_t getCid(void);
 uint32_t getTcpNack(void);
-
-char *getQgmr(void);
 
 uint8_t isModuleRunNormal(void);
 uint8_t isModulePowerOnOk(void);

@@ -63,7 +63,8 @@ typedef struct
 	uint8_t jt808Lbs				: 1;
     uint8_t jt808Wifi				: 1;
 	uint8_t ephemerisFlag			: 1;
-	uint8_t updateStatus			: 1;
+	uint8_t bleUpgradeOnoff			: 1;
+	uint8_t bleUpsForceStop			: 1;
     uint8_t lbsExtendEvt;
     uint8_t wifiExtendEvt;
     uint8_t ringWakeUpTick;
@@ -99,7 +100,7 @@ typedef struct
 
 	uint8_t moduleRstCnt;
 	uint8_t bleforceCmd;		/*由于断网会有断开继电器的逻辑，所以有些指令得强行主机发完再断开继电器*/
-	
+	uint16_t fastGap;
 } SystemInfoTypedef;
 
 extern SystemInfoTypedef sysinfo;

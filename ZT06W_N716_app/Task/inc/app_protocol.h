@@ -29,7 +29,7 @@ typedef struct
     char rxsn[50];
     char rxcurCODEVERSION[50];
     uint8_t updateOK;
-	uint8_t updateObject;
+	uint8_t updateFirst;
     uint32_t file_id;
     uint32_t file_offset;
     uint32_t file_len;
@@ -37,9 +37,10 @@ typedef struct
     uint32_t rxfileOffset;//已接收文件长度
 } UndateInfoStruct;
 
-typedef struct _ota_package {
+typedef struct _ota_package
+{
     unsigned int offset;
-    unsigned int len;
+    unsigned int len;			//单包文件长度
     unsigned char *data;
 } ota_package_t;
 
@@ -112,11 +113,11 @@ uint32_t getRxfileOffset(void);
 
 void updateUISInit(uint8_t object);
 void updateUISVersion(uint8_t *version);
+uint8_t *getNewCodeVersion(void);
 
 void gpsRestoreUpload(void);
 
 void updateHistoryGpsTime(gpsinfo_s *gpsinfo);
-void upgradeResultProcess(uint8_t upgradeResult, uint32_t offset, uint32_t size);
 void protocolSnRegister(char *sn);
 void protocolInfoResiter(uint8_t batLevel, float vol, uint16_t sCnt, uint16_t runCnt);
 

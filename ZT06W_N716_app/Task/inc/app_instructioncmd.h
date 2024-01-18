@@ -53,7 +53,6 @@ typedef enum{
     SOS_INS,
     CENTER_INS,
     SOSALM_INS,
-    QGMR_INS,
     MOTIONDET_INS,
     FCG_INS,
     QFOTA_INS,
@@ -69,7 +68,11 @@ typedef enum{
     SIMSEL_INS,
     READVERSION_INS,
     SETTXPOWER_INS,
-    BLEUPS_INS,
+    FILE_INS,
+    BTFLIST_INS,
+    BTFDEL_INS,
+    BTFDOWNLOAD_INS,
+    BTFUPS_INS,
 }INSTRUCTIONID;
 
 
