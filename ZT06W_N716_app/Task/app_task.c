@@ -1485,7 +1485,7 @@ static void voltageCheckTask(void)
     float x;
     x = portGetAdcVol(VCARD_CHANNEL);
     sysinfo.outsidevoltage = x * sysparam.adccal;
-	sysinfo.outsidevoltage += (((24 - sysinfo.outsidevoltage) * 0.2) / 14);
+//	sysinfo.outsidevoltage += (((24 - sysinfo.outsidevoltage) * 0.2) / 14);
 
     //低电报警
     if (sysinfo.outsidevoltage < sysinfo.lowvoltage)
@@ -2464,7 +2464,56 @@ void uartCloseTask(void)
 	{
 		portUartCfg(APPUSART2, 0, 115200, NULL);
 		portAccGpioCfg();
+		portSysOnoffGpioCfg();
 	}
+}
+
+/**************************************************
+@bref		系统关机任务
+@param
+@note		检测到关机引脚为高电平时关机
+**************************************************/
+
+static void autoShutDownTask(void)
+{
+	static uint8_t tick = 0;
+	static uint8_t flag = 0;
+	if (sysinfo.logLevel != 0) 
+	{
+		tick = 0;
+		return;
+	}
+	if (tick++ >= 10)
+	{
+		portUartCfg(APPUSART2, 0, 115200, NULL);
+		portAccGpioCfg();
+		portSysOnoffGpioCfg();
+	}
+	if (usart2_ctl.init)
+	{
+		return;
+	}
+    static uint16_t shutdownTick;
+    if (SYSONOFF_READ == ON_STATE)
+    {
+    	flag = 0;
+        shutdownTick = 0;
+        return;
+    }
+    ledStatusUpdate(SYSTEM_LED_RUN, 0);
+    if (shutdownTick >= 3 && sysparam.shutdownalm != 0 && flag == 0)
+    {
+        alarmRequestSet(ALARM_SHUTDOWN_REQUEST);
+        if (sysparam.shutdownLock != 0)
+        {
+            sysparam.relayCtl = 1;
+            paramSaveAll();
+            doRelayOn();
+            LogPrintf(DEBUG_ALL, "shutdown==>try to relay on");
+        }
+        flag = 1;
+    }
+    shutdownTick++;
 }
 
 /**************************************************
@@ -2482,7 +2531,6 @@ void taskRunInSecond(void)
     gsCheckTask();
     gpsRequestTask();
     voltageCheckTask();
-    
     gpsUplodOnePointTask();
     lbsRequestTask();
     wifiRequestTask();
@@ -2491,7 +2539,7 @@ void taskRunInSecond(void)
     serverManageTask();
 	autoSleepTask();
 	relayAutoCtrlTask();
-	uartCloseTask();
+	autoShutDownTask();
 }
 
 
@@ -2538,7 +2586,7 @@ void doDebugRecvPoll(uint8_t *msg, uint16_t len)
 void myTaskPreInit(void)
 {
     tmos_memset(&sysinfo, 0, sizeof(sysinfo));
-	sysinfo.logLevel = 6;
+	//sysinfo.logLevel = 9;
 
     SetSysClock(CLK_SOURCE_PLL_60MHz);
     portGpioSetDefCfg();
@@ -2550,6 +2598,7 @@ void myTaskPreInit(void)
     portWdtCfg();
     portGsensorPwrCtl(1);
     portLdrGpioCfg();
+    portRelayGpioCfg();
 	portSleepDn();
     paramInit();
     relayInit();

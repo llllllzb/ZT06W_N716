@@ -618,8 +618,28 @@ void portLdrGpioCfg(void)
 void portAccGpioCfg(void)
 {
 	GPIOB_ModeCfg(ACC_PIN, GPIO_ModeIN_PU);
+}
+
+/**
+ * @brief   RELAY GPIO初始化
+ * @param
+ * @return
+ */
+
+void portRelayGpioCfg(void)
+{
 	GPIOA_ModeCfg(RELAY_PIN, GPIO_ModeOut_PP_5mA);
 	RELAY_OFF;
+}
+
+/**
+ * @brief   关机键 GPIO初始化
+ * @param
+ * @return
+ */
+void portSysOnoffGpioCfg(void)
+{
+	GPIOB_ModeCfg(SYSONOFF_PIN, GPIO_ModeIN_PU);
 }
 
 /**

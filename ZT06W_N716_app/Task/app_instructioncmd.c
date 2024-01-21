@@ -1997,7 +1997,6 @@ static void doFileInstruction(ITEM *item, char *message)
 	}
 	else
 	{
-
 		if (strncmp(item->item_data[1], "A", strlen(item->item_data[1])) == 0 ||
 			strncmp(item->item_data[1], "a", strlen(item->item_data[1])) == 0)
 		{
@@ -2102,9 +2101,9 @@ static void doBtfListInstruction(ITEM *item, char *message)
 	strcpy(message, "Bt firmware list:\r\n");
 	for (i = 0; i < num; i++)
 	{
-		sprintf(message + strlen(message), "[file(%d):%s, size:%d bytes]\n", 
+		sprintf(message + strlen(message), "[file(%d):%s, size:%d bytes]\r\n", 
 											 i, 
-											 file[i].fileName, 
+											 file[i].fileName,
 											 file[i].fileSize);
 	}
 }
@@ -2210,7 +2209,7 @@ static void doBtfDownloadInstruction(ITEM *item, char *message)
 
 static void doBtfUpsInstruction(ITEM *item, char *message)
 {
-	uint8_t i;
+	uint8_t i, l;
 	int j;
 	bleRelayInfo_s *bleinfo;
 	fileInfo_s *file;
@@ -2227,13 +2226,26 @@ static void doBtfUpsInstruction(ITEM *item, char *message)
 		}
 		else
 		{
-			for (i = 0; i < sysparam.bleMacCnt; i++)
-			{
+			char mac[20];
+    		char mac2[20];
+    		for (i = 0; i < sysparam.bleMacCnt; i++)
+    		{
+			    byteToHexString(sysparam.bleConnMac[i], (uint8_t *)mac, 6);
+	            mac[12] = 0;
+	            l = 5;
+	            for (j = 0; j < 3; j++)
+	            {
+	                tmos_memcpy(mac2, &mac[j * 2], 2);
+	                tmos_memcpy(&mac[j * 2], &mac[l * 2], 2);
+	                tmos_memcpy(&mac[l * 2], mac2, 2);
+	                l--;
+	            }
 				bleinfo = bleRelayGeInfo(i);
 				if (bleinfo != NULL)
 				{
-					sprintf(message + strlen(message), "Dev(%d) Version:%s\n", i, bleinfo->version);
+					sprintf(message + strlen(message), "Dev(%d)[mac:%s version:%s];\n", i, mac, bleinfo->version);
 				}
+				
 			}
 		}
 	}

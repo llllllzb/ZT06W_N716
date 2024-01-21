@@ -105,9 +105,9 @@ void paramDefaultInit(uint8_t level)
     sysparam.relaySpeed = 20;
     sysparam.protectVoltage = 4.6;
     sysparam.bf = 0;
-    sysparam.gsdettime=0;
-    sysparam.gsValidCnt=0;
-    sysparam.gsInvalidCnt=0;
+    sysparam.gsdettime = 0;
+    sysparam.gsValidCnt = 0;
+    sysparam.gsInvalidCnt = 0;
     sysparam.hiddenServOnoff = 1;
     sysparam.agpsen = 1;
     sysparam.bleen = 1;
@@ -125,6 +125,8 @@ void paramDefaultInit(uint8_t level)
 	sysparam.uncapLock=0;
 	sysparam.txPower = LL_TX_POWEER_5_DBM;
 	dynamicParam.sim = 1;
+	sysparam.shutdownalm = 1;
+	sysparam.shutdownLock = 0;
     paramSaveAll();
     dynamicParamSaveAll();
 }

@@ -69,6 +69,8 @@
 #define ACC_STATE_ON	0
 #define ACC_STATE_OFF	1
 
+#define ON_STATE	1
+#define OFF_STATE	0
 
 #define DEV_EXTEND_OF_MY	0x01
 #define DEV_EXTEND_OF_BLE	0x02

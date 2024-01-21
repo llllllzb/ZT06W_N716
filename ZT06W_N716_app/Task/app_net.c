@@ -367,48 +367,6 @@ void modulePowerOn(void)
 }
 
 /**************************************************
-@bref		关机完成
-@param
-@return
-@note
-**************************************************/
-static void modulePowerOffFinish(void)
-{
-	POWER_OFF;
-	LogMessage(DEBUG_ALL, "modulePowerOffFinish");
-}
-
-
-/**************************************************
-@bref		关机键释放
-@param
-@return
-@note
-**************************************************/
-
-static void modulePowerOffRelease(void)
-{
-	PWRKEY_HIGH;
-    startTimer(60, modulePowerOffFinish, 0);
-    LogMessage(DEBUG_ALL, "modulePowerOffRelease");
-}
-
-
-/**************************************************
-@bref		关机键按下
-@param
-@return
-@note
-**************************************************/
-
-static void modulePowerOffPress(void)
-{
-    PWRKEY_LOW;
-    startTimer(25, modulePowerOffRelease, 0);
-    LogMessage(DEBUG_ALL, "modulePowerOffPress");
-}
-
-/**************************************************
 @bref		模组关机
 @param
 @return
@@ -420,9 +378,10 @@ void modulePowerOff(void)
     LogMessage(DEBUG_ALL, "modulePowerOff");
     moduleInit();
     portUartCfg(APPUSART3, 0, 115200, NULL);
+    POWER_OFF;
     PWRKEY_HIGH;
     RSTKEY_HIGH;
-    startTimer(6, modulePowerOffPress, 0);
+    
     sysinfo.moduleRstFlag = 1;
     socketDelAll();
 }

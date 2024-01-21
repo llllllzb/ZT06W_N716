@@ -74,6 +74,10 @@
 #define RELAY_ON		GPIOA_SetBits(RELAY_PIN)
 #define RELAY_OFF		GPIOA_ResetBits(RELAY_PIN)
 
+//¹Ø»ú¼ü Éæ¼°IO
+#define SYSONOFF_PIN	GPIO_Pin_23
+#define SYSONOFF_READ	(GPIOB_ReadPortPin(ACC_PIN) ? 1 : 0)
+
 #define VCARD_ADCPIN	GPIO_Pin_9
 #define VCARD_CHANNEL	CH_EXTIN_13
 
@@ -160,10 +164,12 @@ void portSetNextWakeUpTime(void);
 void portUpdateRtcOffset(uint8_t year, uint8_t month, uint8_t date, uint8_t hour, uint8_t minute, uint8_t second);
 
 void portLowPowerCfg(void);
+void portRelayGpioCfg(void);
 
 
 void portAdcCfg(void);
 float portGetAdcVol(ADC_SingleChannelTypeDef channel);
+void portSysOnoffGpioCfg(void);
 
 void portSleepEn(void);
 void portSleepDn(void);

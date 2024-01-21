@@ -144,6 +144,8 @@ typedef struct
 	uint8_t relayUpgrade[2];	//表示设备需要升级，一旦设置，在设备升级完成或者手动取消之前都不会置0
 	fileInfo_s file;
 	uint8_t blefastShieldTime;
+	uint8_t shutdownalm;
+	uint8_t shutdownLock;
 } systemParam_s;
 
 /*存在EEPROM里的动态参数*/
