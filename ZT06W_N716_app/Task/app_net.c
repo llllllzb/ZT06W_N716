@@ -381,7 +381,6 @@ void modulePowerOff(void)
     POWER_OFF;
     PWRKEY_HIGH;
     RSTKEY_HIGH;
-    
     sysinfo.moduleRstFlag = 1;
     socketDelAll();
 }
@@ -398,8 +397,8 @@ void moduleReset(void)
 {
     LogMessage(DEBUG_ALL, "moduleReset");
     moduleInit();
-    modulePowerOff();
-    startTimer(120, modulePowerOn, 0);
+    POWER_OFF;
+    startTimer(20, modulePowerOn, 0);
     socketDelAll();
 }
 
@@ -637,6 +636,7 @@ void netConnectTask(void)
             {
                 moduleState.cpinResponOk = 0;
                 moduleState.csqOk = 0;
+                moduleCtrl.cpincount = 0;
                 netSetCgdcong((char *)sysparam.apn);
                 netSetApn(sysparam.apn, sysparam.apnuser, sysparam.apnpassword, sysparam.apnAuthPort);
                 changeProcess(CSQ_STATUS);
@@ -663,6 +663,7 @@ void netConnectTask(void)
 						}
                 	}
                     startTimer(10, moduleReset, 0);
+                    
                 }
                 break;
             }
@@ -684,30 +685,49 @@ void netConnectTask(void)
                 {
                     moduleCtrl.csqTime = 90;
                 }
-                if (moduleState.fsmtick >= moduleCtrl.csqTime)
+                if (moduleState.fsmtick >= 90)
                 {
                     moduleCtrl.csqCount++;
-                    if (moduleCtrl.csqCount >= 3)
+                    if (moduleCtrl.csqCount >= 2)
+                    {
+                        if (sysparam.simSel == SIM_MODE_1)
+                        {
+	                        if (dynamicParam.sim == SIM_1)
+							{
+								netSetSim(SIM_2);
+							}
+							else if (dynamicParam.sim == SIM_2)
+							{
+								netSetSim(SIM_1);
+							}
+						}
+						startTimer(10, moduleReset, 0);
+						changeProcess(AT_STATUS);
+					}
+                    else if (moduleCtrl.csqCount >= 4)
                     {
                         moduleCtrl.csqCount = 0;
-                        if (dynamicParam.sim == SIM_1)
-						{
-							netSetSim(SIM_2);
-						}
-						else if (dynamicParam.sim == SIM_2)
-						{
-							netSetSim(SIM_1);
-						}
-                        //3次搜索不到网络时，如果没有gps请求，则关机
-                        if (sysinfo.gpsRequest != 0)
+                        if (sysparam.simSel == SIM_MODE_1)
                         {
-                            startTimer(10, moduleReset, 0);
+	                        if (dynamicParam.sim == SIM_1)
+							{
+								netSetSim(SIM_2);
+							}
+							else if (dynamicParam.sim == SIM_2)
+							{
+								netSetSim(SIM_1);
+							}
+						}
+                        changeProcess(AT_STATUS);
+                        //2次注册不上基站时，如果没有gps请求，则关机
+                        if (sysinfo.gpsRequest == 0)
+                        {
+                            startTimer(30, modeTryToStop, 0);
                         }
                         else
                         {
-                            startTimer(10, modeTryToStop, 0);
+                            startTimer(10, moduleReset, 0);
                         }
-                        changeProcess(AT_STATUS);
                     }
                     else
                     {
@@ -733,19 +753,38 @@ void netConnectTask(void)
                     moduleCtrl.cgregCount++;
                     if (moduleCtrl.cgregCount >= 2)
                     {
-                        moduleCtrl.cgregCount = 0;
-                        if (dynamicParam.sim == SIM_1)
-						{
-							netSetSim(SIM_2);
+                        if (sysparam.simSel == SIM_MODE_1)
+                        {
+	                        if (dynamicParam.sim == SIM_1)
+							{
+								netSetSim(SIM_2);
+							}
+							else if (dynamicParam.sim == SIM_2)
+							{
+								netSetSim(SIM_1);
+							}
 						}
-						else if (dynamicParam.sim == SIM_2)
-						{
-							netSetSim(SIM_1);
+						startTimer(10, moduleReset, 0);
+						changeProcess(AT_STATUS);
+					}
+                    else if (moduleCtrl.cgregCount >= 4)
+                    {
+                        moduleCtrl.cgregCount = 0;
+                        if (sysparam.simSel == SIM_MODE_1)
+                        {
+	                        if (dynamicParam.sim == SIM_1)
+							{
+								netSetSim(SIM_2);
+							}
+							else if (dynamicParam.sim == SIM_2)
+							{
+								netSetSim(SIM_1);
+							}
 						}
                         //2次注册不上基站时，如果没有gps请求，则关机
                         if (sysinfo.gpsRequest == 0)
                         {
-                            startTimer(10, modeTryToStop, 0);
+                            startTimer(30, modeTryToStop, 0);
                         }
                         else
                         {
@@ -763,14 +802,6 @@ void netConnectTask(void)
                 break;
             }
         case CONFIG_STATUS:
-//        	sendModuleCmd(CPMS_CMD, "\"ME\",\"ME\",\"ME\"");	/*修改短信存储位置*/
-//        	sendModuleCmd(CNMI_CMD, "2,1");						/*第二个参数表示缓存在ME中, 不立即上报*/
-//        	sendModuleCmd(CMGF_CMD, "1");						/*TEXT模式*/
-//            sendModuleCmd(CFGRI_CMD, "1,50,50,3");
-//            sendModuleCmd(CIPMUX_CMD, "1");
-//            sendModuleCmd(CIPQSEND_CMD, "1");
-//            sendModuleCmd(CIPRXGET_CMD, "5");
-//            sendModuleCmd(CFG_CMD, "\"urcdelay\",100");
 			sendModuleCmd(CCID_CMD, NULL);
 			sendModuleCmd(CIMI_CMD, NULL);
 			sendModuleCmd(CGSN_CMD, NULL);
@@ -1248,15 +1279,15 @@ static void tcpreadParser(uint8_t *buf, uint16_t len)
 				少了两条数据，relen -= recvlen;会导致relen不够减,去到60000+
 				所以这里要求出实际剩余的长度
 			*/
-			char debug[769] = { 0 };
+			//char debug[769] = { 0 };
 			recvlen = relen >= recvlen ? recvlen : relen;
 			LogPrintf(DEBUG_ALL, "Socket [%d] Recv %d bytes:", sockId, recvlen);
 			
 			socketRecv(sockId, rebuf, recvlen);
-			recvlen = recvlen > 384 ? 384 : recvlen;
-			byteToHexString(rebuf, debug, recvlen);
-			debug[recvlen * 2] = 0;
-			LogMessageWL(DEBUG_ALL, debug, recvlen * 2);
+//			recvlen = recvlen > 384 ? 38 4 : recvlen;
+//			byteToHexString(rebuf, debug, recvlen);
+//			debug[recvlen * 2] = 0;
+//			LogMessageWL(DEBUG_ALL, debug, recvlen * 2);
 
 			rebuf += index;
 			relen -= index;
@@ -2220,7 +2251,7 @@ void readAdcParser(uint8_t *buf, uint16_t len)
 			memcpy(restore, rebuf, 4);
 			restore[4] = 0;
 			vol = atoi(restore);
-			sysinfo.insidevoltage = ((float)vol / 1000) + 0.1;
+			sysinfo.insidevoltage = ((float)vol / 1000) + 0.02;
 			LogPrintf(DEBUG_ALL, "Bat vol:%.2f", sysinfo.insidevoltage);
 		}
 	}
@@ -2584,7 +2615,7 @@ void moduleRecvParser(uint8_t *buf, uint16_t bufsize)
             }
             else if (my_getstrindex((char *)dataRestore, "+CPIN: NO SIM", len))
             {
-				if (moduleState.fsmtick >= 10)
+				if (moduleState.fsmtick >= 29)
 				{
                 	//延迟3S是担心此时模组指令发送队列太多发不过来
                     startTimer(30, moduleReset, 0);
@@ -3032,6 +3063,21 @@ uint8_t isModulePowerOnOk(void)
         return 1;
     return 0;
 }
+
+/**************************************************
+@bref		模组是否开机
+@param
+@return
+@note
+**************************************************/
+
+uint8_t isModulePowerOn(void)
+{
+	if (moduleState.powerState)
+		return 1;
+	return 0;
+}
+
 
 /**************************************************
 @bref		挂断电话

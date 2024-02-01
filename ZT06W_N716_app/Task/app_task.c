@@ -301,18 +301,18 @@ static void ledTask(void)
 **************************************************/
 void gpsRequestSet(uint32_t flag)
 {
-	if (sysinfo.lowBatProtectFlag)
+//	if (getTerminalAccState() == 0 && centralPoi.init && (flag & GPS_REQUEST_UPLOAD_ONE))
+//	{
+//		gpsinfo_s newgps;
+//		tmos_memcpy(&newgps, &centralPoi.gpsinfo, sizeof(gpsinfo_s));
+//		updateHistoryGpsTime(&newgps);
+//        protocolSend(NORMAL_LINK, PROTOCOL_12, &newgps);
+//	    jt808SendToServer(TERMINAL_POSITION,   &newgps);
+//		return;
+//	}
+	if (dynamicParam.lowPowerFlag == 1)
 	{
-		LogMessage(DEBUG_ALL, "gpsRequestSet==>Low Battery");
-		return;
-	}
-	if (getTerminalAccState() == 0 && centralPoi.init && (flag & GPS_REQUEST_UPLOAD_ONE))
-	{
-		gpsinfo_s newgps;
-		tmos_memcpy(&newgps, &centralPoi.gpsinfo, sizeof(gpsinfo_s));
-		updateHistoryGpsTime(&newgps);
-        protocolSend(NORMAL_LINK, PROTOCOL_12, &newgps);
-	    jt808SendToServer(TERMINAL_POSITION,   &newgps);
+		LogPrintf(DEBUG_ALL, "gpsRequestSet==>low power");
 		return;
 	}
     LogPrintf(DEBUG_ALL, "gpsRequestSet==>0x%04X", flag);
@@ -575,9 +575,9 @@ static void gpsRequestTask(void)
             if (gpsinfo->fixstatus)
             {
                 ledStatusUpdate(SYSTEM_LED_GPSOK, 1);
-                //DEBUG
-//                lbsRequestClear();
-//				wifiRequestClear();
+                lbsRequestClear();
+				wifiRequestClear();
+				
             }
             else
             {
@@ -846,6 +846,11 @@ void alarmRequestSaveGet(void)
 **************************************************/
 void alarmRequestSet(uint32_t request)
 {
+	if (dynamicParam.lowPowerFlag == 1)
+	{
+		LogPrintf(DEBUG_ALL, "alarmRequestSet==>low power");
+		return;
+	}
     LogPrintf(DEBUG_ALL, "alarmRequestSet==>0x%04X", request);
     sysinfo.alarmRequest |= request;
     alarmRequestSave(sysinfo.alarmRequest);
@@ -1225,25 +1230,7 @@ static void motionCheckTask(void)
         staticTime = 180;
     }
 
-
-	if ((sysinfo.outsidevoltage <= sysparam.protectVoltage) && (sysinfo.outsidevoltage > 4.5))
-	{
-		hTick = 0;
-		if (++lTick >= 30)
-		{
-			sysinfo.lowBatProtectFlag = 1;
-		}
-	}
-	else if ((sysinfo.outsidevoltage > sysparam.protectVoltage) || (sysinfo.outsidevoltage <= 4.5))
-	{
-		lTick = 0;
-		if (++hTick >= 30)
-		{
-			sysinfo.lowBatProtectFlag = 0;
-		}
-	}
-
-    if (sysparam.MODE == MODE1 || sysparam.MODE == MODE3 || sysinfo.lowBatProtectFlag)
+    if (sysparam.MODE == MODE1 || sysparam.MODE == MODE3 || dynamicParam.lowPowerFlag == 1)
     {
         motionStateUpdate(SYS_SRC, MOTION_STATIC);
         gsStaticTick = 0;
@@ -1366,7 +1353,6 @@ static void motionCheckTask(void)
         }
     }
 
-	//DEBUG
     if (ACC_READ == ACC_STATE_ON)
     {
         //线永远是第一优先级
@@ -1477,15 +1463,14 @@ static void voltageCheckTask(void)
 {
     static uint16_t lowpowertick = 0;
     static uint8_t  lowwflag = 0;
-    static uint32_t  LostVoltageTick = 0;
+    static uint32_t LostVoltageTick = 0;
     static uint8_t  LostVoltageFlag = 0;
-	static uint8_t lostTick = 0;
-    static uint8_t bleCutFlag = 0;
-    static uint8_t bleCutTick = 0;
+	static uint32_t lostTick = 0;
+    static uint8_t  bleCutFlag = 0;
+    static uint8_t  bleCutTick = 0;
     float x;
     x = portGetAdcVol(VCARD_CHANNEL);
     sysinfo.outsidevoltage = x * sysparam.adccal;
-//	sysinfo.outsidevoltage += (((24 - sysinfo.outsidevoltage) * 0.2) / 14);
 
     //低电报警
     if (sysinfo.outsidevoltage < sysinfo.lowvoltage)
@@ -1501,10 +1486,9 @@ static void voltageCheckTask(void)
                 jt808UpdateAlarm(JT808_LOWVOLTAE_ALARM, 1);
                 alarmRequestSet(ALARM_LOWV_REQUEST);
 
-                wifiRequestSet(DEV_EXTEND_OF_MY);
+                //wifiRequestSet(DEV_EXTEND_OF_MY);
                 gpsRequestSet(GPS_REQUEST_UPLOAD_ONE);
             }
-
         }
     }
     else
@@ -1521,8 +1505,13 @@ static void voltageCheckTask(void)
 
     if (sysinfo.outsidevoltage < 5.0)
     {
+    	if ((lostTick % 60) == 0 && dynamicParam.lowPowerFlag == 0)
+    	{
+			LogPrintf(DEBUG_ALL, "检查电池");
+			queryBatVoltage();
+    	}
     	lostTick++;
-        if (LostVoltageFlag == 0 && lostTick >= 20)
+        if (LostVoltageFlag == 0 && lostTick >= 10)
         {
             LostVoltageFlag = 1;
             LostVoltageTick = sysinfo.sysTick;
@@ -1530,8 +1519,6 @@ static void voltageCheckTask(void)
             jt808UpdateAlarm(JT808_LOSTVOLTAGE_ALARM, 1);
             LogMessage(DEBUG_ALL, "Lost power supply");
             alarmRequestSet(ALARM_LOSTV_REQUEST);
-
-            wifiRequestSet(DEV_EXTEND_OF_MY);
             gpsRequestSet(GPS_REQUEST_UPLOAD_ONE);
             if (sysparam.bleRelay != 0 && bleCutFlag != 0)
             {
@@ -1556,9 +1543,28 @@ static void voltageCheckTask(void)
 				LogMessage(DEBUG_ALL, "relay on was disable");
             }
         }
+        if (LostVoltageFlag)
+        {
+			if (sysinfo.insidevoltage < 3.5)
+			{
+				if (dynamicParam.lowPowerFlag == 0)
+				{
+					dynamicParam.lowPowerFlag = 1;
+					dynamicParamSaveAll();
+					LogPrintf(DEBUG_ALL, "电量过低，开启低电保护");
+					startTimer(30, modeTryToStop, 0);
+				}
+			}
+        }
     }
     else if (sysinfo.outsidevoltage > 6.0)
     {
+    	if (dynamicParam.lowPowerFlag)
+		{
+			dynamicParam.lowPowerFlag = 0;
+			dynamicParamSaveAll();
+			LogPrintf(DEBUG_ALL, "电量恢复，取消低电保护");
+		}
     	//电压小于设置的保护电压范围时，则运行蓝牙去执行断电报警
 		if (sysinfo.outsidevoltage > sysparam.bleVoltage)
 		{
@@ -1642,8 +1648,14 @@ static void modeShutDownQuickly(void)
 void modeTryToStop(void)
 {
     sysinfo.gpsRequest = 0;
+	sysinfo.wifiRequest = 0;
+	sysinfo.wifiExtendEvt = 0;
+	sysinfo.lbsExtendEvt = 0;
+	sysinfo.lbsRequest = 0;
     changeModeFsm(MODE_STOP);
+    LogPrintf(DEBUG_ALL, "modeTryToStop==>ok");
 }
+
 /**************************************************
 @bref		模式启动
 @param
@@ -1779,12 +1791,12 @@ static void modeStop(void)
 
 static void modeDone(void)
 {
-    static uint16_t runTick = 0;
+    static uint16_t runTick = 0;	
     if (sysparam.MODE == MODE2)
     {
         runTick++;
     }
-    if (sysinfo.gpsRequest || runTick >= 7200)
+    if ((sysinfo.gpsRequest || runTick >= 3600) && dynamicParam.lowPowerFlag == 0)
     {
         runTick = 0;
         changeModeFsm(MODE_START);
@@ -1871,6 +1883,11 @@ static void sysModeRunTask(void)
 
 void lbsRequestSet(uint8_t ext)
 {
+	if (dynamicParam.lowPowerFlag == 1)
+	{
+		LogPrintf(DEBUG_ALL, "lbsRequestSet==>low power");
+		return;
+	}
     sysinfo.lbsRequest = 1;
     sysinfo.lbsExtendEvt |= ext;
 }
@@ -1954,11 +1971,11 @@ void wifiTimeout(void)
 
 void wifiRspSuccess(void)
 {
-	LogMessage(DEBUG_ALL, "wifiRspSuccess");
 	if (wifiTimeOutId != -1)
 	{
 		stopTimer(wifiTimeOutId);
 		wifiTimeOutId = -1;
+		LogMessage(DEBUG_ALL, "wifiRspSuccess");
 	}
 }
 
@@ -1971,6 +1988,11 @@ void wifiRspSuccess(void)
 
 void wifiRequestSet(uint8_t ext)
 {
+	if (dynamicParam.lowPowerFlag == 1)
+	{
+		LogPrintf(DEBUG_ALL, "wifiRequestSet==>low power");
+		return;
+	}
     sysinfo.wifiRequest = 1;
     sysinfo.wifiExtendEvt |= ext;
 }
@@ -1986,6 +2008,7 @@ void wifiRequestClear(void)
 {
 	sysinfo.wifiRequest = 0;
 	sysinfo.wifiExtendEvt = 0;
+	wifiRspSuccess();
 }
 
 /**************************************************
@@ -2400,6 +2423,12 @@ static void lightDetectionTask(void)
     static uint32_t darknessTick = 0;
     static uint32_t FrontdarknessTick = 0;
     uint8_t curLdrState;
+    if (dynamicParam.lowPowerFlag == 1)
+    {
+		darknessTick = 0;
+		FrontdarknessTick = 0;
+		return ;
+    }
     curLdrState = LDR2_READ;
 
     if (curLdrState == 0)
@@ -2448,25 +2477,8 @@ static void lightDetectionTask(void)
         //暗
         FrontdarknessTick++;
     }
-
-    //LogPrintf(DEBUG_ALL, "ldr2:%d, ldr1:%d", LDR2_READ, LDR1_READ);
 }
 
-void uartCloseTask(void)
-{
-	static uint8_t tick = 0;
-	if (sysinfo.logLevel != 0) 
-	{
-		tick = 0;
-		return;
-	}
-	if (tick++ >= 20)
-	{
-		portUartCfg(APPUSART2, 0, 115200, NULL);
-		portAccGpioCfg();
-		portSysOnoffGpioCfg();
-	}
-}
 
 /**************************************************
 @bref		系统关机任务
@@ -2483,7 +2495,7 @@ static void autoShutDownTask(void)
 		tick = 0;
 		return;
 	}
-	if (tick++ >= 10)
+	if (tick++ >= 20)
 	{
 		portUartCfg(APPUSART2, 0, 115200, NULL);
 		portAccGpioCfg();
@@ -2526,11 +2538,11 @@ static void autoShutDownTask(void)
 void taskRunInSecond(void)
 {
     rebootEveryDay();
+    voltageCheckTask();
     netConnectTask();
     motionCheckTask();
     gsCheckTask();
     gpsRequestTask();
-    voltageCheckTask();
     gpsUplodOnePointTask();
     lbsRequestTask();
     wifiRequestTask();
@@ -2604,7 +2616,7 @@ void myTaskPreInit(void)
     relayInit();
     socketListInit();
     createSystemTask(outputNode, 2);
-    //3秒运行一次可以过滤 3秒内一起重复的报警
+    //3秒运行一次可以过滤 3秒内一起重复的报警,例如快速预报警
     createSystemTask(alarmRequestTask, 30);
     
     sysinfo.sysTaskId = createSystemTask(taskRunInSecond, 10);

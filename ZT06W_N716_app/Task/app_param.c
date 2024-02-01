@@ -127,6 +127,7 @@ void paramDefaultInit(uint8_t level)
 	dynamicParam.sim = 1;
 	sysparam.shutdownalm = 1;
 	sysparam.shutdownLock = 0;
+	dynamicParam.lowPowerFlag = 0;
     paramSaveAll();
     dynamicParamSaveAll();
 }
@@ -142,7 +143,9 @@ void paramInit(void)
     if (sysparam.otaParamFlag != OTA_PARAM_FLAG)
     {
 		sysparam.otaParamFlag = OTA_PARAM_FLAG;
+		dynamicParam.lowPowerFlag = 0;
 		paramSaveAll();
+		dynamicParamSaveAll();
     }
     /* ·À´ô¾ÀÕý²ÎÊý */
     if (sysparam.txPower != LL_TX_POWEER_0_DBM &&

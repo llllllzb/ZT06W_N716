@@ -58,7 +58,6 @@ typedef struct
 	uint8_t moduleRstFlag			: 1;
 	uint8_t debugflag				: 1;
 	uint8_t bleConnStatus			: 1;
-	uint8_t lowBatProtectFlag		: 1;
 	uint8_t rspTimeout				: 1;//relay on回复超时标志位
 	uint8_t jt808Lbs				: 1;
     uint8_t jt808Wifi				: 1;

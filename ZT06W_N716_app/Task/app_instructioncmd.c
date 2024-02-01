@@ -242,7 +242,7 @@ static void doStatusInstruction(ITEM *item, char *message)
     uint8_t i;
     moduleGetCsq();
     sprintf(message, "OUT-V=%.2fV;", sysinfo.outsidevoltage);
-    //sprintf(message + strlen(message), "BAT-V=%.2fV;", sysinfo.insidevoltage);
+    sprintf(message + strlen(message), "BAT-V=%.2fV;", sysinfo.insidevoltage);
     if (sysinfo.gpsOnoff)
     {
         gpsinfo = getCurrentGPSInfo();
@@ -258,6 +258,7 @@ static void doStatusInstruction(ITEM *item, char *message)
     sprintf(message + strlen(message), "SIGNAL=%d;", getModuleRssi());
     sprintf(message + strlen(message), "BATTERY=%s;", getTerminalChargeState() > 0 ? "Charging" : "Uncharged");
     sprintf(message + strlen(message), "LOGIN=%s;", primaryServerIsReady() > 0 ? "Yes" : "No");
+    sprintf(message + strlen(message), "Sim=%d", dynamicParam.sim);
     sprintf(message + strlen(message), "Gsensor=%s", read_gsensor_id() == 0x13 ? "OK" : "ERR");
     sprintf(message + strlen(message), "MILE=%.2lfkm;", (sysparam.mileage * (double)(sysparam.milecal / 100.0 + 1.0)) / 1000);
 }
@@ -291,7 +292,6 @@ static void serverChangeCallBack(void)
 }
 
 static void doServerInstruction(ITEM *item, char *message)
-
 {
     if (item->item_data[2][0] != 0 && item->item_data[3][0] != 0)
     {
@@ -376,7 +376,7 @@ static void doModeInstruction(ITEM *item, char *message)
 				workmode = 23;
 				break;
     	}
-        sprintf(message, "Mode%d,%d", workmode, sysparam.gpsuploadgap);
+        sprintf(message, "Mode%d,%d,%d", workmode, sysparam.gpsuploadgap, sysparam.gapMinutes);
     }
     else
     {

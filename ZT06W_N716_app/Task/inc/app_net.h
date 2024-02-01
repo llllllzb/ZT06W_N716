@@ -198,6 +198,7 @@ typedef struct
 {
     uint8_t scanMode;
     uint8_t atCount;
+    uint8_t cpincount;
     uint8_t csqCount;
     uint8_t cgregCount;
     uint8_t qipactCount;
@@ -239,6 +240,7 @@ void queryBatVoltage(void);
 uint8_t isAgpsDataRecvComplete(void);
 fileInfo_s* getFileList(uint8_t *num);
 
+uint8_t isModulePowerOn(void);
 
 uint8_t compareFile(uint8_t *file, uint8_t len);
 

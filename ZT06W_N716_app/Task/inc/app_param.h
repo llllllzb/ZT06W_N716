@@ -23,7 +23,7 @@
 #define BOOT_PARAM_FLAG         0xB0
 #define	OTA_PARAM_FLAG			0x1A
 
-#define EEPROM_VERSION									"ZT06W_N716_ZKW_V2.0.0"
+#define EEPROM_VERSION									"ZT06W_N716_ZKW_V2.0.1"
 
 
 #define JT808_PROTOCOL_TYPE			8
@@ -146,6 +146,7 @@ typedef struct
 	uint8_t blefastShieldTime;
 	uint8_t shutdownalm;
 	uint8_t shutdownLock;
+	
 } systemParam_s;
 
 /*存在EEPROM里的动态参数*/
@@ -165,6 +166,7 @@ typedef struct
 	uint16_t saveLon;
 	int32_t rtcOffset;
 	uint8_t sim;
+	uint8_t lowPowerFlag;		//当读取外电小于5时，且电池小于3.5V时，该标志位置1，直到有外电接入为止再置0
 }dynamicParam_s;
 
 

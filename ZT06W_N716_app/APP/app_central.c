@@ -501,40 +501,79 @@ static tmosEvents bleCentralTaskEventProcess(tmosTaskID taskID, tmosEvents event
     if (event & BLE_TASK_UPDATE_PARAM_EVENT)
     {
     	status = bleIncorrectMode;
-		for (uint8_t i = 0; i < DEVICE_MAX_CONNECT_COUNT; i++)
+		if (devInfoList[0].use &&
+			devInfoList[0].connHandle != INVALID_CONNHANDLE)
 		{
-			if (devInfoList[i].use &&
-				devInfoList[i].connHandle != INVALID_CONNHANDLE)
-			{
-				status = GAPRole_UpdateLink(devInfoList[i].connHandle,
-											20,
-											100,
-											0,
-											100);
-				LogPrintf(DEBUG_BLE, "Dev(%d) Updataparam, ret:0x%02x", i, status);
-			}
+			status = GAPRole_UpdateLink(devInfoList[0].connHandle,
+										20,
+										100,
+										0,
+										100);
+			LogPrintf(DEBUG_BLE, "Dev(%d)[%d] Updataparam, ret:0x%02x", 0, devInfoList[0].connHandle, status);
 		}
+		if (status == blePending)
+		{
+			tmos_start_task(bleCentralTaskId, BLE_TASK_UPDATE_PARAM_EVENT, MS1_TO_SYSTEM_TIME(100));	
+		}
+		
 		return event ^ BLE_TASK_UPDATE_PARAM_EVENT;
     }
 
     if (event & BLE_TASK_UPDATE_MTU_EVENT)
     {
     	status = bleIncorrectMode;
-		for (uint8_t i = 0; i < DEVICE_MAX_CONNECT_COUNT; i++)
-		{
-			if (devInfoList[i].use &&
-				devInfoList[i].connHandle != INVALID_CONNHANDLE)
+
+			if (devInfoList[0].use &&
+				devInfoList[0].connHandle != INVALID_CONNHANDLE)
 			{
-				status = bleCentralChangeMtu(devInfoList[i].connHandle);
-				break;
+				status = bleCentralChangeMtu(devInfoList[0].connHandle);
 			}
-		}
+		
 		if (status == blePending)
 		{
 			tmos_start_task(bleCentralTaskId, BLE_TASK_UPDATE_MTU_EVENT, MS1_TO_SYSTEM_TIME(100));	
 		}
 		return event ^ BLE_TASK_UPDATE_MTU_EVENT;
     }
+    
+    if (event & BLE_TASK_UPDATE_PARAM2_EVENT)
+    {
+    	status = bleIncorrectMode;
+		if (devInfoList[1].use &&
+			devInfoList[1].connHandle != INVALID_CONNHANDLE)
+		{
+			status = GAPRole_UpdateLink(devInfoList[1].connHandle,
+										20,
+										100,
+										0,
+										100);
+			LogPrintf(DEBUG_BLE, "Dev(%d)[%d] Updataparam, ret:0x%02x", 1, devInfoList[1].connHandle, status);
+		}
+		if (status == blePending)
+		{
+			tmos_start_task(bleCentralTaskId, BLE_TASK_UPDATE_PARAM2_EVENT, MS1_TO_SYSTEM_TIME(100));	
+		}
+		
+		return event ^ BLE_TASK_UPDATE_PARAM2_EVENT;
+    }
+
+    if (event & BLE_TASK_UPDATE_MTU2_EVENT)
+    {
+    	status = bleIncorrectMode;
+		if (devInfoList[1].use &&
+			devInfoList[1].connHandle != INVALID_CONNHANDLE)
+		{
+			status = bleCentralChangeMtu(devInfoList[1].connHandle);
+		}
+		
+		if (status == blePending)
+		{
+			tmos_start_task(bleCentralTaskId, BLE_TASK_UPDATE_MTU2_EVENT, MS1_TO_SYSTEM_TIME(100));	
+		}
+		return event ^ BLE_TASK_UPDATE_MTU2_EVENT;
+    }
+
+    
 
     if (event & BLE_TASK_100MS_EVENT)
     {
@@ -772,7 +811,7 @@ void bleCentralStartConnect(uint8_t *addr, uint8_t addrType)
     byteToHexString(addr, debug, 6);
     debug[12] = 0;
     status = GAPRole_CentralEstablishLink(FALSE, FALSE, addrType, addr);
-    LogPrintf(DEBUG_BLE, "Start connect [%s](%d),ret=0x%02X", debug, addrType, status);
+    LogPrintf(DEBUG_BLE, "Start connect [%s]addrType(%d),ret=0x%02X", debug, addrType, status);
     if (status != SUCCESS)
     {
         LogPrintf(DEBUG_BLE, "Startconnect error:0x%02x", status);
@@ -868,7 +907,7 @@ bStatus_t bleCentralChangeMtu(uint16_t connHandle)
         .clientRxMTU = BLE_BUFF_MAX_LEN - 4,
     };
     ret = GATT_ExchangeMTU(connHandle, &req, bleCentralTaskId);
-    LogPrintf(DEBUG_BLE, "bleCentralChangeMtu==>Ret:0x%02X", ret);
+    LogPrintf(DEBUG_BLE, "bleCentralChangeMtu[%d]==>Ret:0x%02X", connHandle, ret);
     return ret;
 }
 
@@ -1095,10 +1134,20 @@ static void bleDevConnSuccess(uint8_t *addr, uint16_t connHandle)
                 devInfoList[i].notifyDone      = 0;
                 ble_conn_now_id				   = i;
                 LogPrintf(DEBUG_BLE, "Get device conn handle [%d]", connHandle);
-                /* 更改MTU */
-                tmos_start_task(bleCentralTaskId, BLE_TASK_UPDATE_MTU_EVENT, MS1_TO_SYSTEM_TIME(1600));
-                /* 更新参数 */
-                tmos_start_task(bleCentralTaskId, BLE_TASK_UPDATE_PARAM_EVENT, MS1_TO_SYSTEM_TIME(1800));
+                if (i == 0)
+                {
+	                /* 更改MTU */
+	                tmos_start_task(bleCentralTaskId, BLE_TASK_UPDATE_MTU_EVENT, MS1_TO_SYSTEM_TIME(1600));
+	                /* 更新参数 */
+	                tmos_start_task(bleCentralTaskId, BLE_TASK_UPDATE_PARAM_EVENT, MS1_TO_SYSTEM_TIME(1800));
+                }
+                else if (i == 1)
+                {
+	                /* 更改MTU */
+	                tmos_start_task(bleCentralTaskId, BLE_TASK_UPDATE_MTU2_EVENT, MS1_TO_SYSTEM_TIME(1600));
+	                /* 更新参数 */
+	                tmos_start_task(bleCentralTaskId, BLE_TASK_UPDATE_PARAM2_EVENT, MS1_TO_SYSTEM_TIME(1800));
+                }
                 /* 查找服务 */
                 tmos_start_task(bleCentralTaskId, BLE_TASK_SVC_DISCOVERY_EVENT, MS1_TO_SYSTEM_TIME(800));
                 bleDevReadAllRssi();

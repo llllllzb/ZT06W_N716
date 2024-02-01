@@ -1,2 +1,15 @@
 eclipse.preferences.version=1
+encoding//APP/app_central.c=GBK
+encoding//APP/app_peripheral.c=GBK
+encoding//APP/include/app_peripheral.h=GBK
 encoding//LIB/CH58xBLE_LIB.h=UTF-8
+encoding//Ld/Link.ld=GBK
+encoding//Task/app_atcmd.c=GBK
+encoding//Task/app_instructioncmd.c=GBK
+encoding//Task/app_net.c=GBK
+encoding//Task/app_param.c=GBK
+encoding//Task/app_task.c=GBK
+encoding//Task/inc/app_bleRelay.h=GBK
+encoding//Task/inc/app_param.h=GBK
+encoding//Task/inc/app_port.h=GBK
+encoding/<project>=UTF-8

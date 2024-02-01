@@ -15,7 +15,6 @@ C_SRCS += \
 ../Task/app_instructioncmd.c \
 ../Task/app_jt808.c \
 ../Task/app_kernal.c \
-../Task/app_log.c \
 ../Task/app_mir3da.c \
 ../Task/app_net.c \
 ../Task/app_param.c \
@@ -38,7 +37,6 @@ OBJS += \
 ./Task/app_instructioncmd.o \
 ./Task/app_jt808.o \
 ./Task/app_kernal.o \
-./Task/app_log.o \
 ./Task/app_mir3da.o \
 ./Task/app_net.o \
 ./Task/app_param.o \
@@ -61,7 +59,6 @@ C_DEPS += \
 ./Task/app_instructioncmd.d \
 ./Task/app_jt808.d \
 ./Task/app_kernal.d \
-./Task/app_log.d \
 ./Task/app_mir3da.d \
 ./Task/app_net.d \
 ./Task/app_param.d \
