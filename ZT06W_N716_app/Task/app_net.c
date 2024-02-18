@@ -97,6 +97,7 @@ const atCmd_s cmdtable[] =
 	{READADC_CMD, "AT+READADC"},
 	{CLIP_CMD, "AT+CLIP"},
 	{FSFS_CMD, "AT+FSFS"},
+	{CLVL_CMD, "AT+CLVL"},
 };
 
 /**************************************************
@@ -808,6 +809,7 @@ void netConnectTask(void)
 			sendModuleCmd(FSLIST_CMD, "?");
 			sendModuleCmd(RECVMODE_CMD, "0");
 			sendModuleCmd(CLIP_CMD, "1");
+			sendModuleCmd(MICL_CMD, "9");
 			moduleGetLbs();
 			queryBatVoltage();
             changeProcess(QIACT_STATUS);
@@ -1542,10 +1544,7 @@ static void wifiapscanParser(uint8_t *buf, uint16_t len)
             LogPrintf(DEBUG_ALL, "WIFI:[%s]", restore);
 
             wifiList.ap[wifiList.apcount].signal = 0;
-            for (i = 0; i < 6; i++)
-            {
-                changeHexStringToByteArray(wifiList.ap[wifiList.apcount].ssid + i, restore + (3 * i), 1);
-            }
+            changeHexStringToByteArray(wifiList.ap[wifiList.apcount].ssid, restore, 6);
             wifiList.apcount++;
         }
         index = getCharIndex(rebuf, relen, '\n');

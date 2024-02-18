@@ -12,4 +12,5 @@ encoding//Task/app_task.c=GBK
 encoding//Task/inc/app_bleRelay.h=GBK
 encoding//Task/inc/app_param.h=GBK
 encoding//Task/inc/app_port.h=GBK
+encoding//Task/inc/app_protocol.h=GBK
 encoding/<project>=UTF-8

@@ -101,6 +101,7 @@ typedef enum
 	READADC_CMD,
 	CLIP_CMD,
 	FSFS_CMD,
+	CLVL_CMD,
 } atCmdType_e;
 
 
