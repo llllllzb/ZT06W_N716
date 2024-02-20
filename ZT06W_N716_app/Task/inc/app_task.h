@@ -54,7 +54,7 @@
 #define APP_TASK_POLLUART_EVENT			0x0002
 
 #define UART_RECV_BUFF_SIZE 			512
-#define DEBUG_BUFF_SIZE					256
+#define DEBUG_BUFF_SIZE					128
 
 
 #define MODE_START						0
@@ -133,7 +133,7 @@ typedef struct
     uint8_t ind;
     motionState_e motionState;
     uint8_t tapInterrupt;
-    uint8_t tapCnt[50];
+    uint8_t tapCnt[30];
 } motionInfo_s;
 
 typedef struct
@@ -164,7 +164,7 @@ void gpsTcpSendRequest(void);
 void centralPointClear(void);
 
 void saveGpsHistory(void);
-
+void doDebugRecvPoll(uint8_t *msg, uint16_t len);
 void wakeUpByInt(uint8_t     type,uint8_t sec);
 void gpsOpen(void);
 

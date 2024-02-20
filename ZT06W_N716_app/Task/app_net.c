@@ -20,9 +20,6 @@ static moduleCtrl_s moduleCtrl;
 static cmdNode_s *headNode = NULL;
 
 
-static void gpsUploadChangeFsm(uint8_t fsm);
-static void gpsUploadSetSize(uint32_t size);
-
 //指令表
 const atCmd_s cmdtable[] =
 {
@@ -2256,6 +2253,17 @@ void readAdcParser(uint8_t *buf, uint16_t len)
 	}
 }
 
+static uint8_t answerPhone(void)
+{
+    sendModuleCmd(ATA_CMD, NULL);
+}
+
+static void clearPhone(void)
+{
+    moduleState.ataflag = 0;
+    LogMessage(DEBUG_ALL, "clearPhone");
+}
+
 /**************************************************
 @bref		来电解析
 @param
@@ -2293,7 +2301,12 @@ void clipParser(uint8_t *buf, uint16_t len)
 					if (my_strstr((char *)phoneNum, (char *)sysparam.sosNum[i], 11))
 					{
 						LogPrintf(DEBUG_ALL, "SOS number %s,anaswer phone", sysparam.sosNum[i]);
-						sendModuleCmd(ATA_CMD, NULL);
+						if (moduleState.ataflag == 0)
+						{
+                            answerPhone();
+                            moduleState.ataflag = 1;
+                            startTimer(100, clearPhone, 0);//在接通后10秒清除标志
+						}
 						return;
 					}
 				}
@@ -2305,6 +2318,33 @@ void clipParser(uint8_t *buf, uint16_t len)
 			}
 		}
 	}
+}
+
+/**************************************************
+@bref       ATA 解析
+@param
+@return
+@note
+NO CARRIER  对端不接听
+NO ANSWER   对端挂断
+BUSY
+CONNECT
+**************************************************/
+void ataParser(uint8_t *buf, uint16_t len)
+{
+    uint8_t *rebuf;
+    uint16_t relen;
+    int index;
+    rebuf = buf;
+    relen = len;
+
+    if (my_getstrindex((char *)rebuf, "NO CARRIER", relen) >= 0 ||
+        my_getstrindex((char *)rebuf, "NO ANSWER",  relen) >= 0 ||
+        my_getstrindex((char *)rebuf, "BUSY",       relen) >= 0 ||
+        my_getstrindex((char *)rebuf, "CONNECT",    relen) >= 0)
+    {
+        clearPhone();
+    }
 }
 
 /**************************************************
@@ -2597,7 +2637,7 @@ void moduleRecvParser(uint8_t *buf, uint16_t bufsize)
 	tcpcloseParser(dataRestore, len);
 	clipParser(dataRestore, len);
 	fsrfParser(dataRestore, len);
-	
+	ataParser(dataRestore, len);
     /*****************************************/
     switch (moduleState.cmd)
     {

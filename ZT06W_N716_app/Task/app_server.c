@@ -1285,6 +1285,7 @@ void upgradeServerConnTask(void)
 	{
 	        case NETWORK_LOGIN:
             //发送登录,并进入等待状态
+	        protocolSnRegister(dynamicParam.SN);
             protocolSend(UPGRADE_LINK, PROTOCOL_01, NULL);
             upgradeServerChangeFsm(NETWORK_LOGIN_WAIT);
             break;

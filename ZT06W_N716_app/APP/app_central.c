@@ -64,7 +64,7 @@ void bleCentralInit(void)
 	otaRxInfoInit(0,NULL, 0);
     bleDevConnInit();
     bleRelayInit();
-    GAPRole_CentralInit();
+
     GAP_SetParamValue(TGAP_DISC_SCAN, 2400);
     GAP_SetParamValue(TGAP_CONN_EST_INT_MIN, 20);
     GAP_SetParamValue(TGAP_CONN_EST_INT_MAX, 100);
@@ -712,7 +712,7 @@ static void bleCentralEventCallBack(gapRoleEvent_t *pEvent)
             linkTerminatedEventHandler(&pEvent->linkTerminate);
             break;
         case GAP_LINK_PARAM_UPDATE_EVENT:
-        	LogPrintf(DEBUG_BLE, "Dev connhandle:%d param update", pEvent->linkUpdate.connectionHandle);
+        	LogPrintf(DEBUG_BLE, "Handle[%d] param update", pEvent->linkUpdate.connectionHandle);
         	LogPrintf(DEBUG_BLE, "connInterval:%d", pEvent->linkUpdate.connInterval);
         	LogPrintf(DEBUG_BLE, "connLatency:%d", pEvent->linkUpdate.connLatency);
         	LogPrintf(DEBUG_BLE, "connTimeout:%d", pEvent->linkUpdate.connTimeout);
@@ -1146,7 +1146,7 @@ static void bleDevConnSuccess(uint8_t *addr, uint16_t connHandle)
 	                /* 更改MTU */
 	                tmos_start_task(bleCentralTaskId, BLE_TASK_UPDATE_MTU2_EVENT, MS1_TO_SYSTEM_TIME(1600));
 	                /* 更新参数 */
-	                tmos_start_task(bleCentralTaskId, BLE_TASK_UPDATE_PARAM2_EVENT, MS1_TO_SYSTEM_TIME(1800));
+	                tmos_start_task(bleCentralTaskId, BLE_TASK_UPDATE_PARAM2_EVENT, MS1_TO_SYSTEM_TIME(2000));
                 }
                 /* 查找服务 */
                 tmos_start_task(bleCentralTaskId, BLE_TASK_SVC_DISCOVERY_EVENT, MS1_TO_SYSTEM_TIME(800));

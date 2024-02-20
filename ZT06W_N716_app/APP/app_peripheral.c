@@ -342,8 +342,7 @@ void appPeripheralInit(void)
     char broadCastNmae[30];
     uint8 u8Value;
     uint16 u16Value;
-    //外设初始化
-    GAPRole_PeripheralInit();
+
     //注册任务
     appPeripheralTaskId = TMOS_ProcessEventRegister(appPeripheralEventProcess);
 
@@ -357,8 +356,8 @@ void appPeripheralInit(void)
     appPeripheralConn.connectionHandle = GAP_CONNHANDLE_INIT;
     //参数配置
     //开启广播
-    u8Value = TRUE;
-    GAPRole_SetParameter(GAPROLE_ADVERT_ENABLED, sizeof(uint8), &u8Value);
+//    u8Value = TRUE;
+//    GAPRole_SetParameter(GAPROLE_ADVERT_ENABLED, sizeof(uint8), &u8Value);
     //配置广播信息
     sprintf(broadCastNmae, "%s-%s", "AUTO", dynamicParam.SN + 9);
     appPeripheralBroadcastInfoCfg(broadCastNmae);
@@ -368,7 +367,7 @@ void appPeripheralInit(void)
     //配置最长连接间隔
     //<! 做主从二合一时候这里要和主机的一致，不然Update param有异常，read也有异常
     u16Value = 100;    //3200*1.25=4000ms
-    GAPRole_SetParameter(GAPROLE_MIN_CONN_INTERVAL, sizeof(uint16), &u16Value);
+    GAPRole_SetParameter(GAPROLE_MAX_CONN_INTERVAL, sizeof(uint16), &u16Value);
     //配置最短广播间隔
     //unit:0.625ms*160=100ms
     GAP_SetParamValue(TGAP_DISC_ADV_INT_MIN, 160);

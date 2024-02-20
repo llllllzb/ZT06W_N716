@@ -73,6 +73,7 @@ typedef enum{
     BTFDEL_INS,
     BTFDOWNLOAD_INS,
     BTFUPS_INS,
+    UART_INS,
 }INSTRUCTIONID;
 
 

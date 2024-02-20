@@ -50,9 +50,8 @@
  
  【SNV】
  BLE_SNV                                    - 是否开启SNV功能，用于储存绑定信息( 默认:TRUE )
- BLE_SNV_ADDR                               - SNV信息保存地址，使用data flash最后512字节( 默认:0x77E00 )
- BLE_SNV_BLOCK                              - SNV信息保存块大小( 默认:256 )
- BLE_SNV_NUM                                - SNV信息保存数量( 默认:1 )
+ BLE_SNV_ADDR                               - SNV信息保存地址，使用data flash最后( 默认:0x77E00 )
+                                            - 如果配置了SNVNum参数，则需要对应修改Lib_Write_Flash函数内擦除的flash大小，大小为SNVBlock*SNVNum
 
  【RTC】
  CLK_OSC32K                                 - RTC时钟选择，如包含主机角色必须使用外部32K( 0 外部(32768Hz)，默认:1：内部(32000Hz)，2：内部(32768Hz) )
@@ -114,17 +113,11 @@
 #ifndef BLE_SNV_ADDR
 #define BLE_SNV_ADDR                        0x77E00-FLASH_ROM_MAX_SIZE
 #endif
-#ifndef BLE_SNV_BLOCK
-#define BLE_SNV_BLOCK                       256
-#endif
-#ifndef BLE_SNV_NUM
-#define BLE_SNV_NUM                         1
-#endif
 #ifndef CLK_OSC32K
 #define CLK_OSC32K                          1   // 该项请勿在此修改，必须在工程配置里的预处理中修改，如包含主机角色必须使用外部32K
 #endif
 #ifndef BLE_MEMHEAP_SIZE
-#define BLE_MEMHEAP_SIZE                    (1024*6)
+#define BLE_MEMHEAP_SIZE                    (1024*7)
 #endif
 #ifndef BLE_BUFF_MAX_LEN
 #define BLE_BUFF_MAX_LEN                    251

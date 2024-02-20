@@ -75,6 +75,7 @@ const instruction_s insCmdTable[] =
     {BTFDEL_INS, "BTFDEL"},
     {BTFDOWNLOAD_INS, "BTFDOWNLOAD"},
     {BTFUPS_INS, "BTFUPS"},
+    {UART_INS, "UART"},
     {SN_INS, "*"},
 };
 
@@ -258,8 +259,8 @@ static void doStatusInstruction(ITEM *item, char *message)
     sprintf(message + strlen(message), "SIGNAL=%d;", getModuleRssi());
     sprintf(message + strlen(message), "BATTERY=%s;", getTerminalChargeState() > 0 ? "Charging" : "Uncharged");
     sprintf(message + strlen(message), "LOGIN=%s;", primaryServerIsReady() > 0 ? "Yes" : "No");
-    sprintf(message + strlen(message), "Sim=%d", dynamicParam.sim);
-    sprintf(message + strlen(message), "Gsensor=%s", read_gsensor_id() == 0x13 ? "OK" : "ERR");
+    sprintf(message + strlen(message), "Sim=%d;", dynamicParam.sim);
+    sprintf(message + strlen(message), "Gsensor=%s;", read_gsensor_id() == 0x13 ? "OK" : "ERR");
     sprintf(message + strlen(message), "MILE=%.2lfkm;", (sysparam.mileage * (double)(sysparam.milecal / 100.0 + 1.0)) / 1000);
 }
 
@@ -842,6 +843,7 @@ void doDebugInstrucion(ITEM *item, char *message)
     sprintf(message + strlen(message), "bleConnStatus[%s]:%s", sysinfo.bleConnStatus ? "CONNECTED" : "DISCONNECTED", appPeripheralParamCallback());
     sprintf(message + strlen(message), "upgrade server:%s serverfsm:%d blefsm:%d bleupgrade:%d  %d", 
     	upgradeServerIsReady() ? "Yes" : "No", getUpgradeServerFsm(), getBleOtaFsm(), sysparam.relayUpgrade[0], sysparam.relayUpgrade[1]);
+    sprintf(message + strlen(message), "SYSONOFF_READ:%d", SYSONOFF_READ);
 }
 
 void doACCCTLGNSSInstrucion(ITEM *item, char *message)
@@ -2122,17 +2124,29 @@ static void doBtfDelInstruction(ITEM *item, char *message)
 		strcpy(message, "Forbidden operation,device was downloading bt firmware");
 		return;
 	}
+
 	fileInfo_s *file;
 	uint8_t i;
 	uint8_t num;
+	uint8_t index;
 	file = getFileList(&num);
-	for (i = 0; i < num; i++)
+	if (item->item_data[1][0] == 0 || item->item_data[1][0] == '?')
 	{
-		fileDelete(file[i].fileName);
+        for (i = 0; i < num; i++)
+        {
+            fileDelete(file[i].fileName);
+        }
+        fileQueryList();
+        moduleFileInfoClear();
+        strcpy(message, "Delete all bt firmware success");
 	}
-	fileQueryList();
-	moduleFileInfoClear();
-	strcpy(message, "Delete all bt firmware success");
+	else
+	{
+	    index = atoi(item->item_data[1]);
+	    fileDelete(file[index].fileName);
+	    fileQueryList();
+	    sprintf(message, "Delete (%d)[%s] bt firmware success", index, file[index].fileName);
+    }
 }
 
 /**************************************************
@@ -2162,7 +2176,6 @@ static void doBtfDownloadInstruction(ITEM *item, char *message)
 		sprintf(message, "Device will download bt firmware from %s:%d after 5 seconds", sysparam.upgradeServer,
 																						sysparam.upgradePort);
 		upgradeServerInit(0);
-
 		return;
 	}
 	if (item->item_data[1][0] == '0')
@@ -2184,6 +2197,13 @@ static void doBtfDownloadInstruction(ITEM *item, char *message)
 	{
 		strcpy(message, "Dev was upgrading");
 		return;
+	}
+	uint8_t num;
+	fileInfo_s *file = getFileList(&num);
+	if (num >= FILE_MAX_CNT)
+	{
+	    strcpy(message, "File list is full");
+	    return;
 	}
 	/* ÎÄ¼þÏÂÔØÅäÖÃ */
 	if (item->item_data[1][0] != 0)
@@ -2221,8 +2241,10 @@ static void doBtfUpsInstruction(ITEM *item, char *message)
 	{
 		if (sysinfo.bleUpgradeOnoff)
 		{
-			sprintf(message, "Dev(%d)upgrade[%s]completed progress: %.1f%%",
-					getBleOtaStatus(), info->fileName, ((float)info->rxoffset / info->totalsize) * 100);
+			sprintf(message, "Dev(%d)[%s] programming completed progress: %.1f%%; verify completed progress: %.1f%%",
+					getBleOtaStatus(), info->fileName,
+					((float)info->rxoffset / info->totalsize) * 100,
+					((float)info->veroffset / info->totalsize) * 100);
 		}
 		else
 		{
@@ -2391,6 +2413,37 @@ static void doBtfUpsInstruction(ITEM *item, char *message)
 		}
 		paramSaveAll();
 	}
+}
+
+static void doUartInstruction(ITEM *item, char *message)
+{
+	uint8_t i;
+	if (item->item_data[1][0] == 0 || item->item_data[1][0] == '?')
+    {
+        sprintf(message, "Uart is %s, loglvl is %d", usart2_ctl.init ? "Open" : "Close", sysinfo.logLevel);
+    }
+    else
+    {
+    	if (item->item_data[1][0] != 0)
+    	{
+			i = atoi(item->item_data[1]);
+    	}
+    	if (item->item_data[2][0] != 0)
+    	{
+			sysinfo.logLevel = atoi(item->item_data[2]);
+    	}
+    	if (i)
+    	{
+			portUartCfg(APPUSART2, 1, 115200, doDebugRecvPoll);
+    	}
+    	else 
+    	{
+			portUartCfg(APPUSART2, 0, 115200, NULL);
+			portAccGpioCfg();
+			portSysOnoffGpioCfg();
+    	}
+    	sprintf(message, "Update Uart to %s, loglvl to %d", usart2_ctl.init ? "Open" : "Close", sysinfo.logLevel);
+    }
 }
 
 
@@ -2585,6 +2638,9 @@ static void doinstruction(int16_t cmdid, ITEM *item, insMode_e mode, void *param
 			break;
 		case BTFUPS_INS:
 			doBtfUpsInstruction(item, message);
+			break;
+		case UART_INS:
+			doUartInstruction(item, message);
 			break;
         default:
             if (mode == SMS_MODE)

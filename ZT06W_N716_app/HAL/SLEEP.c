@@ -44,7 +44,8 @@ uint32_t CH58X_LowPower(uint32_t time)
 #if(defined(HAL_SLEEP)) && (HAL_SLEEP == TRUE)
     uint32_t time_sleep, time_curr;
     unsigned long irq_status;
-    
+    if(sleepCtl==0)
+        return 0;
     SYS_DisableAllIrq(&irq_status);
     time_curr = RTC_GetCycle32k();
     // 检测睡眠时间
@@ -73,7 +74,7 @@ uint32_t CH58X_LowPower(uint32_t time)
     if(!RTCTigFlag)
     {
         LowPower_Sleep(RB_PWR_RAM2K | RB_PWR_RAM30K | RB_PWR_EXTEND);
-        if(RTCTigFlag) // 注意如果使用了RTC以外的唤醒方式，需要注意此时32M晶振未稳定
+        if(!RTCTigFlag) // 注意如果使用了RTC以外的唤醒方式，需要注意此时32M晶振未稳定
         {
             time += WAKE_UP_RTC_MAX_TIME;
             if(time > 0xA8C00000)
@@ -107,7 +108,6 @@ void HAL_SleepInit(void)
 #if(defined(HAL_SLEEP)) && (HAL_SLEEP == TRUE)
     sys_safe_access_enable();
     R8_SLP_WAKE_CTRL |= RB_SLP_RTC_WAKE; // RTC唤醒
-    sys_safe_access_disable();              //
     sys_safe_access_enable();
     R8_RTC_MODE_CTRL |= RB_RTC_TRIG_EN;  // 触发模式
     sys_safe_access_disable();              //

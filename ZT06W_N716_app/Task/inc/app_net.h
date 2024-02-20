@@ -18,14 +18,10 @@
 #define SLEEPMODULE			DTR_HIGH
 
 
-#define FILE_MAX_CNT		8
+#define FILE_MAX_CNT		5
 
 
-#define FILE_READ_SIZE		400
-
-
-
-#define MODULE_RX_BUFF_SIZE		1024
+#define MODULE_RX_BUFF_SIZE		896
 
 typedef enum
 {
@@ -193,6 +189,7 @@ typedef struct
     uint32_t fsmtick;
 	fileInfo_s  file[FILE_MAX_CNT];
 	uint8_t  fileNum;
+	uint8_t ataflag             :1;
 } moduleState_s;
 
 typedef struct

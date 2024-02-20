@@ -24,7 +24,7 @@
 static SystemLEDInfo sysledinfo;
 static motionInfo_s motionInfo;
 static int8_t wifiTimeOutId = -1;
-static centralPoint_s centralPoi = { 0 };
+
 
 /**************************************************
 @bref		bit0 置位，布防
@@ -635,27 +635,27 @@ static void gpsRequestTask(void)
 @note
 **************************************************/
 
-void centralPointInit(gpsinfo_s *gpsinfo)
-{
-	centralPoi.init = 1;
-	tmos_memcpy(&centralPoi.gpsinfo, gpsinfo, sizeof(gpsinfo_s));
-	LogPrintf(DEBUG_ALL, "%s==>lat:%.2f, lon:%.2f", __FUNCTION__, 
-				centralPoi.gpsinfo.latitude, centralPoi.gpsinfo.longtitude);
-}
+//void centralPointInit(gpsinfo_s *gpsinfo)
+//{
+//	centralPoi.init = 1;
+//	tmos_memcpy(&centralPoi.gpsinfo, gpsinfo, sizeof(gpsinfo_s));
+//	LogPrintf(DEBUG_ALL, "%s==>lat:%.2f, lon:%.2f", __FUNCTION__,
+//				centralPoi.gpsinfo.latitude, centralPoi.gpsinfo.longtitude);
+//}
 
-/**************************************************
-@bref		清除基准点
-@param
-@return
-@note
-**************************************************/
-
-void centralPointClear(void)
-{
-	centralPoi.init = 0;
-	tmos_memset(&centralPoi.gpsinfo, 0, sizeof(gpsinfo_s));
-	LogPrintf(DEBUG_ALL, "%s==>OK", __FUNCTION__);
-}
+///**************************************************
+//@bref		清除基准点
+//@param
+//@return
+//@note
+//**************************************************/
+//
+//void centralPointClear(void)
+//{
+//	centralPoi.init = 0;
+//	tmos_memset(&centralPoi.gpsinfo, 0, sizeof(gpsinfo_s));
+//	LogPrintf(DEBUG_ALL, "%s==>OK", __FUNCTION__);
+//}
 
 
 /**************************************************
@@ -714,7 +714,7 @@ static void gpsUplodOnePointTask(void)
 	    gpsRequestClear(GPS_REQUEST_UPLOAD_ONE);
 	    if (getTerminalAccState() == 0)
 	    {
-			centralPointInit(getCurrentGPSInfo());
+//			centralPointInit(getCurrentGPSInfo());
 	    }
     }
 	
@@ -1080,7 +1080,7 @@ static void motionStateUpdate(motion_src_e src, motionState_e newState)
         }
         terminalAccon();
         //ClearLastMilePoint();
-        centralPointClear();
+        //centralPointClear();
         hiddenServerCloseClear();
     }
     else
@@ -2497,9 +2497,12 @@ static void autoShutDownTask(void)
 	}
 	if (tick++ >= 20)
 	{
-		portUartCfg(APPUSART2, 0, 115200, NULL);
-		portAccGpioCfg();
-		portSysOnoffGpioCfg();
+		if (usart2_ctl.init)
+		{
+			portUartCfg(APPUSART2, 0, 115200, NULL);
+			portAccGpioCfg();
+			portSysOnoffGpioCfg();
+		}
 	}
 	if (usart2_ctl.init)
 	{
@@ -2676,9 +2679,9 @@ void myTaskInit(void)
     tmos_start_reload_task(sysinfo.taskId, APP_TASK_POLLUART_EVENT, MS1_TO_SYSTEM_TIME(50));
     if (sysparam.bleen == 1)
     {	
-    	char broadCastNmae[30];
-		sprintf(broadCastNmae, "%s-%s", "AUTO", dynamicParam.SN + 9);
-    	appPeripheralBroadcastInfoCfg(broadCastNmae);
+//    	char broadCastNmae[30];
+//		sprintf(broadCastNmae, "%s-%s", "AUTO", dynamicParam.SN + 9);
+//    	appPeripheralBroadcastInfoCfg(broadCastNmae);
     }
     else if (sysparam.bleen == 0)
     {

@@ -45,6 +45,8 @@ int main(void)
     myTaskPreInit();
     CH58X_BLEInit();
     HAL_Init();
+    GAPRole_PeripheralInit();
+    GAPRole_CentralInit();
     appPeripheralInit();
     bleCentralInit();
     myTaskInit();

@@ -42,7 +42,6 @@ extern uint32_t CH58X_LowPower(uint32_t time);
 extern void sleepSetState(uint8_t s);
 extern uint8_t getSleepState(void);
 
-
 /*********************************************************************
 *********************************************************************/
 

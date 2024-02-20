@@ -76,7 +76,7 @@
 
 //¹Ø»ú¼ü Éæ¼°IO
 #define SYSONOFF_PIN	GPIO_Pin_23
-#define SYSONOFF_READ	(GPIOB_ReadPortPin(ACC_PIN) ? 1 : 0)
+#define SYSONOFF_READ	(GPIOB_ReadPortPin(SYSONOFF_PIN) ? 1 : 0)
 
 #define VCARD_ADCPIN	GPIO_Pin_9
 #define VCARD_CHANNEL	CH_EXTIN_13

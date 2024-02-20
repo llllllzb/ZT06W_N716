@@ -74,7 +74,6 @@ void HAL_TimeInit(void)
 #if(CLK_OSC32K)
     sys_safe_access_enable();
     R8_CK32K_CONFIG &= ~(RB_CLK_OSC32K_XT | RB_CLK_XT32K_PON);
-    sys_safe_access_disable();
     sys_safe_access_enable();
     R8_CK32K_CONFIG |= RB_CLK_INT32K_PON;
     sys_safe_access_disable();
@@ -84,7 +83,7 @@ void HAL_TimeInit(void)
     R8_CK32K_CONFIG |= RB_CLK_OSC32K_XT | RB_CLK_INT32K_PON | RB_CLK_XT32K_PON;
     sys_safe_access_disable();
 #endif
-    RTC_InitTime(2020, 1, 1, 0, 0, 0); //RTC时钟初始化当前时间
+    //RTC_InitTime(2020, 1, 1, 0, 0, 0); //RTC时钟初始化当前时间
     TMOS_TimerInit(0);
 }
 

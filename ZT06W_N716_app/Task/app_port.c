@@ -218,45 +218,45 @@ void portUartCfg(UARTTYPE type, uint8_t onoff, uint32_t baudrate,
                 PFIC_DisableIRQ(UART0_IRQn);
             }
             break;
-        case APPUSART1:
-
-            usart1_ctl.rxbegin = 0;
-            usart1_ctl.rxend = 0;
-            usart1_ctl.rxbuf = uart1RxBuff;
-            usart1_ctl.rxbufsize = APPUSART1_BUFF_SIZE;
-            usart1_ctl.rxhandlefun = rxhandlefun;
-            usart1_ctl.txhandlefun = UART1_SendString;
-
-            if (onoff)
-            {
-                usart1_ctl.init = 1;
-                GPIOB_SetBits(GPIO_Pin_13); //Tx default high
-                GPIOB_ModeCfg(GPIO_Pin_12, GPIO_ModeIN_PU);  //Rx default input high
-                GPIOB_ModeCfg(GPIO_Pin_13, GPIO_ModeOut_PP_5mA);  // Set tx as output
-
-                GPIOPinRemap(ENABLE, RB_PIN_UART1);
-
-                UART1_DefInit(); //
-                UART1_BaudRateCfg(baudrate);
-                if (rxhandlefun != NULL)
-                {
-
-                    UART1_ByteTrigCfg(UART_7BYTE_TRIG);
-                    uart1trigB = 7;
-                    UART1_INTCfg(ENABLE, RB_IER_RECV_RDY | RB_IER_LINE_STAT);
-                    PFIC_EnableIRQ(UART1_IRQn);
-                }
-            }
-            else
-            {
-                usart1_ctl.init = 0;
-                UART1_Reset();
-                GPIOA_ModeCfg(GPIO_Pin_8, GPIO_ModeIN_Floating);
-                GPIOA_ModeCfg(GPIO_Pin_9, GPIO_ModeIN_Floating);
-                UART1_INTCfg(DISABLE, RB_IER_RECV_RDY | RB_IER_LINE_STAT);
-                PFIC_DisableIRQ(UART1_IRQn);
-            }
-            break;
+//        case APPUSART1:
+//
+//            usart1_ctl.rxbegin = 0;
+//            usart1_ctl.rxend = 0;
+//            usart1_ctl.rxbuf = uart1RxBuff;
+//            usart1_ctl.rxbufsize = APPUSART1_BUFF_SIZE;
+//            usart1_ctl.rxhandlefun = rxhandlefun;
+//            usart1_ctl.txhandlefun = UART1_SendString;
+//
+//            if (onoff)
+//            {
+//                usart1_ctl.init = 1;
+//                GPIOB_SetBits(GPIO_Pin_13); //Tx default high
+//                GPIOB_ModeCfg(GPIO_Pin_12, GPIO_ModeIN_PU);  //Rx default input high
+//                GPIOB_ModeCfg(GPIO_Pin_13, GPIO_ModeOut_PP_5mA);  // Set tx as output
+//
+//                GPIOPinRemap(ENABLE, RB_PIN_UART1);
+//
+//                UART1_DefInit(); //
+//                UART1_BaudRateCfg(baudrate);
+//                if (rxhandlefun != NULL)
+//                {
+//
+//                    UART1_ByteTrigCfg(UART_7BYTE_TRIG);
+//                    uart1trigB = 7;
+//                    UART1_INTCfg(ENABLE, RB_IER_RECV_RDY | RB_IER_LINE_STAT);
+//                    PFIC_EnableIRQ(UART1_IRQn);
+//                }
+//            }
+//            else
+//            {
+//                usart1_ctl.init = 0;
+//                UART1_Reset();
+//                GPIOA_ModeCfg(GPIO_Pin_8, GPIO_ModeIN_Floating);
+//                GPIOA_ModeCfg(GPIO_Pin_9, GPIO_ModeIN_Floating);
+//                UART1_INTCfg(DISABLE, RB_IER_RECV_RDY | RB_IER_LINE_STAT);
+//                PFIC_DisableIRQ(UART1_IRQn);
+//            }
+//            break;
         case APPUSART2:
 
             usart2_ctl.rxbegin = 0;
@@ -400,45 +400,45 @@ void UART0_IRQHandler(void)
 /*
  * UART1 中断接收
  * */
-__attribute__((interrupt("WCH-Interrupt-fast")))
-__attribute__((section(".highcode")))
-void UART1_IRQHandler(void)
-{
-    UINT8V linestate;
-    UINT8V i;
-    uint8_t rxbuff[7];
-    switch (UART1_GetITFlag())
-    {
-        case UART_II_LINE_STAT:        // 线路状态错误
-        {
-            linestate = UART1_GetLinSTA();
-            (void) linestate;
-            break;
-        }
-
-        case UART_II_RECV_RDY:          // 数据达到设置触发点
-            for (i = 0; i != uart1trigB; i++)
-            {
-                rxbuff[i] = UART1_RecvByte();
-            }
-            pushUartRxData(&usart1_ctl, rxbuff, uart1trigB);
-            break;
-
-        case UART_II_RECV_TOUT:         // 接收超时，暂时一帧数据接收完成
-            i = UART1_RecvString(rxbuff);
-            pushUartRxData(&usart1_ctl, rxbuff, i);
-            break;
-
-        case UART_II_THR_EMPTY:         // 发送缓存区空，可继续发送
-            break;
-
-        case UART_II_MODEM_CHG:         // 只支持串口0
-            break;
-
-        default:
-            break;
-    }
-}
+//__attribute__((interrupt("WCH-Interrupt-fast")))
+//__attribute__((section(".highcode")))
+//void UART1_IRQHandler(void)
+//{
+//    UINT8V linestate;
+//    UINT8V i;
+//    uint8_t rxbuff[7];
+//    switch (UART1_GetITFlag())
+//    {
+//        case UART_II_LINE_STAT:        // 线路状态错误
+//        {
+//            linestate = UART1_GetLinSTA();
+//            (void) linestate;
+//            break;
+//        }
+//
+//        case UART_II_RECV_RDY:          // 数据达到设置触发点
+//            for (i = 0; i != uart1trigB; i++)
+//            {
+//                rxbuff[i] = UART1_RecvByte();
+//            }
+//            pushUartRxData(&usart1_ctl, rxbuff, uart1trigB);
+//            break;
+//
+//        case UART_II_RECV_TOUT:         // 接收超时，暂时一帧数据接收完成
+//            i = UART1_RecvString(rxbuff);
+//            pushUartRxData(&usart1_ctl, rxbuff, i);
+//            break;
+//
+//        case UART_II_THR_EMPTY:         // 发送缓存区空，可继续发送
+//            break;
+//
+//        case UART_II_MODEM_CHG:         // 只支持串口0
+//            break;
+//
+//        default:
+//            break;
+//    }
+//}
 /*
  * UART2 中断接收
  * */
@@ -544,19 +544,19 @@ void GPIOA_IRQHandler(void)
     }
 }
 
-__attribute__((interrupt("WCH-Interrupt-fast")))
-__attribute__((section(".highcode")))
-void GPIOB_IRQHandler(void)
-{
-//    uint16_t iqr;
-//    iqr = GPIOB_ReadITFlagPort();
-//    if (iqr & GSINT_PIN)
-//    {
-//        motionOccur();
-//        
-//        GPIOB_ClearITFlagBit(GSINT_PIN);
-//    }
-}
+//__attribute__((interrupt("WCH-Interrupt-fast")))
+//__attribute__((section(".highcode")))
+//void GPIOB_IRQHandler(void)
+//{
+////    uint16_t iqr;
+////    iqr = GPIOB_ReadITFlagPort();
+////    if (iqr & GSINT_PIN)
+////    {
+////        motionOccur();
+////
+////        GPIOB_ClearITFlagBit(GSINT_PIN);
+////    }
+//}
 
 /**
  * @brief   模组GPIO初始化
