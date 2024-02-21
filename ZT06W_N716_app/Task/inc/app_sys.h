@@ -100,6 +100,9 @@ typedef struct
 	uint8_t moduleRstCnt;
 	uint8_t bleforceCmd;		/*由于断网会有断开继电器的逻辑，所以有些指令得强行主机发完再断开继电器*/
 	uint16_t fastGap;
+
+
+
 } SystemInfoTypedef;
 
 extern SystemInfoTypedef sysinfo;

@@ -137,6 +137,7 @@ typedef struct
     uint8_t used;           //是否已使用
     uint32_t dataReq;       //需要发送的指令类型
     bleRelayInfo_s bleInfo; //蓝牙继电器信息
+    uint8_t err			:1; //5分钟没协议通讯置1
 } bleRelayDev_s;
 
 

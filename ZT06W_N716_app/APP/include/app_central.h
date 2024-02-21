@@ -13,6 +13,9 @@
 #include "app_protocol.h"
 #include "app_file.h"
 
+//调试开关
+#define BLE_CENTRAL_DEBUG				1
+
 //通用继电器UUID
 #define SERVICE_UUID                    0xFFE0
 #define CHAR_UUID                       0xFFE1
@@ -79,14 +82,18 @@ typedef struct
  	uint8_t  connPermit		 :1;	// 该参数会一直判断并改写，所以可以在连接的时候改也可以不改 
  	uint16_t connTick;
  	/* 蓝牙协议栈改写参数 */
- 	uint8_t  discState;				//该状态除了第一次上电，其余时间由蓝牙协议栈改写
+ 	uint8_t  discState;				//该状态除了第一次上电，其余时间由蓝牙协议栈改写
+ 	/* 调试信息 */
+#ifdef	BLE_CENTRAL_DEBUG
+ 	bStatus_t Connret;					//连接请求结果
+
+#endif
 } deviceConnInfo_s;
 
 typedef struct
 {
     uint8_t fsm;
     uint16_t runTick;
-    uint8_t disconnIng;
 } bleScheduleInfo_s;
 
 typedef enum
@@ -119,11 +126,24 @@ typedef enum
 	BLE_OTA_FSM_END_ERR,
 }ble_ota_fsm_e;
 
+#ifdef BLE_CENTRAL_DEBUG
+
+typedef struct
+{
+	uint8_t msgMethod;		//gatt消息类型
+	uint8_t msgErrCode;		//gatt消息错误码
+	uint8_t msgStatus;		//gatt消息运行的状态
+	uint8_t ind;			//消息所属的设备指针
+	uint16_t connHandle;	//消息所属的设备句柄
+}bleDebug_s;
+
+#endif
+
 
 extern tmosTaskID bleCentralTaskId;
 void bleCentralInit(void);
 void bleCentralStartDiscover(void);
-void bleCentralStartConnect(uint8_t *addr, uint8_t addrType);
+bStatus_t bleCentralStartConnect(uint8_t *addr, uint8_t addrType);
 void bleCentralDisconnect(uint16_t connHandle);
 uint8 bleCentralSend(uint16_t connHandle, uint16 attrHandle, uint8 *data, uint8 len);
 void bleDevTerminate(void);
@@ -161,5 +181,13 @@ void bleOtaReadDataParser(uint16_t connHandle, OTA_IAP_CMD_t iap_read_data, uint
 uint8_t bleOtaSendProtocol(uint16_t connHandle, uint16_t charHandle);
 
 void bleOtaTask(void);
+
+
+#ifdef BLE_CENTRAL_DEBUG
+bleScheduleInfo_s *getBleScheduleInfo(void);
+deviceConnInfo_s *getDevListInfo(void);
+bleDebug_s *getBleDebugInfo(void);
+
+#endif
 
 #endif /* APP_INCLUDE_APP_CENTRAL_H_ */

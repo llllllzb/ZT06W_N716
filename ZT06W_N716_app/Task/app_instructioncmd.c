@@ -76,6 +76,7 @@ const instruction_s insCmdTable[] =
     {BTFDOWNLOAD_INS, "BTFDOWNLOAD"},
     {BTFUPS_INS, "BTFUPS"},
     {UART_INS, "UART"},
+    {BLEDEBUG_INS, "BLEDEBUG"},
     {SN_INS, "*"},
 };
 
@@ -2446,6 +2447,45 @@ static void doUartInstruction(ITEM *item, char *message)
     }
 }
 
+static void doBleDebugInstruction(ITEM *item, char *message)
+{
+#ifdef BLE_CENTRAL_DEBUG
+	bleScheduleInfo_s *scheduleInfo = getBleScheduleInfo();
+	deviceConnInfo_s *devInfo = getDevListInfo();
+	bleDebug_s *debuginfo = getBleDebugInfo();
+	sprintf(message, "sch fsm:%d, ind:%d, tick:%d;", scheduleInfo->fsm, debuginfo->ind, scheduleInfo->runTick);
+	sprintf(message + strlen(message), "ble: use:%d, connpermit:%d, connret:%d, discState:%d ,conntick:%d;", devInfo->use, 
+																	devInfo->connPermit, devInfo->Connret, devInfo->discState,
+																	devInfo->connTick);
+	sprintf(message + strlen(message), "gatt: handle:0x%02x, method:0x%02x, proStatus:0x%02x", debuginfo->connHandle,
+																				debuginfo->msgMethod, 
+																			 	debuginfo->msgStatus);
+#else
+	strcpy(message, "Ble debug function is close");
+
+#endif
+
+	if (atoi(item->item_data[1]) == 1)
+	{
+	    GAPRole_CentralInit();
+	    bleCentralInit();
+	    sprintf(message + strlen(message), "restart central");
+	}
+	else if (atoi(item->item_data[1]) == 2)
+	{
+		GAPRole_PeripheralInit();
+	    appPeripheralInit();
+	    sprintf(message + strlen(message), "restart peripheral");
+	}
+	else if (atoi(item->item_data[1]) == 3)
+	{
+	    GAPRole_PeripheralInit();
+		GAPRole_CentralInit();
+	    appPeripheralInit();
+		bleCentralInit();
+		sprintf(message + strlen(message), "restart central and peripheral");
+	}
+}
 
 
 /*--------------------------------------------------------------------------------------*/
@@ -2641,6 +2681,9 @@ static void doinstruction(int16_t cmdid, ITEM *item, insMode_e mode, void *param
 			break;
 		case UART_INS:
 			doUartInstruction(item, message);
+			break;
+		case BLEDEBUG_INS:
+			doBleDebugInstruction(item, message);
 			break;
         default:
             if (mode == SMS_MODE)

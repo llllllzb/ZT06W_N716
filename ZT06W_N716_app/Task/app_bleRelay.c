@@ -336,11 +336,11 @@ static void bleDiscDetector(void)
     {
         if (bleRelayList[ind].used == 0)
         {
-            return;
+            continue;
         }
         if (bleRelayList[ind].bleInfo.bleLost == 1)
         {
-            return;
+            continue;
         }
         tick = sysinfo.sysTick - bleRelayList[ind].bleInfo.updateTick;
         if (tick >= (sysparam.bleAutoDisc * 60))
@@ -353,6 +353,45 @@ static void bleDiscDetector(void)
         }
     }
 }
+
+/**************************************************
+@bref       蓝牙连接异常检测
+@param
+@return
+@note
+情况1：继电器被拆除
+情况2：蓝牙协议栈出现异常
+**************************************************/
+
+void bleErrDetector(void)
+{
+    uint8_t ind;
+    uint32_t tick;
+    for (ind = 0; ind < BLE_CONNECT_LIST_SIZE; ind++)
+    {
+		if (bleRelayList[ind].used == 0)
+        {
+            continue;
+        }
+        if (bleRelayList[ind].err == 1)
+        {
+            continue;
+        }
+        tick = sysinfo.sysTick - bleRelayList[ind].bleInfo.updateTick;
+        //LogPrintf(DEBUG_BLE, "Dev(%d) errtick:%d", ind, tick);
+        if (tick >= 300)
+        {
+        	bleRelayList[ind].err = 1;
+			alarmRequestSet(ALARM_BLE_ERR_REQUEST);
+			char debug[20];
+			byteToHexString(bleRelayList[ind].addr, debug, 6);
+            debug[12] = 0;
+            LogPrintf(DEBUG_BLE, "oh ,BLE [%s] err", debug);
+        }
+    }
+
+}
+
 
 /**************************************************
 @bref       周期任务
@@ -380,6 +419,7 @@ void blePeriodTask(void)
         bleRelaySetAllReq(BLE_EVENT_GET_OUTV | BLE_EVENT_GET_RFV | BLE_EVENT_CHK_SOCKET);
     }
     bleDiscDetector();
+    bleErrDetector();
 }
 
 /**************************************************
@@ -731,6 +771,13 @@ void bleRelayRecvParser(uint16_t connHandle, uint8_t *data, uint8_t len)
             byteToHexString(bleRelayList[ind].addr, debug, 6);
             debug[12] = 0;
             LogPrintf(DEBUG_BLE, "^^BLE %s restore", debug);
+        }
+        if (bleRelayList[ind].err == 1)
+        {
+        	bleRelayList[ind].err = 0;
+			byteToHexString(bleRelayList[ind].addr, debug, 6);
+            debug[12] = 0;
+            LogPrintf(DEBUG_BLE, "^^BLE %s return to normal work", debug);
         }
         bleRelayList[ind].bleInfo.bleLost = 0;
         switch (data[readInd + 3])

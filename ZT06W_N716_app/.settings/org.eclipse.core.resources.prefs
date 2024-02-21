@@ -18,6 +18,7 @@ encoding//LIB/CH58xBLE_LIB.h=UTF-8
 encoding//Ld/Link.ld=GBK
 encoding//StdPeriphDriver/inc/CH58x_gpio.h=GBK
 encoding//Task/app_atcmd.c=GBK
+encoding//Task/app_bleRelay.c=GBK
 encoding//Task/app_db.c=GBK
 encoding//Task/app_encrypt.c=GBK
 encoding//Task/app_file.c=GBK
