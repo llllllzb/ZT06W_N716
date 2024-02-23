@@ -844,7 +844,7 @@ void doDebugInstrucion(ITEM *item, char *message)
     sprintf(message + strlen(message), "bleConnStatus[%s]:%s", sysinfo.bleConnStatus ? "CONNECTED" : "DISCONNECTED", appPeripheralParamCallback());
     sprintf(message + strlen(message), "upgrade server:%s serverfsm:%d blefsm:%d bleupgrade:%d  %d", 
     	upgradeServerIsReady() ? "Yes" : "No", getUpgradeServerFsm(), getBleOtaFsm(), sysparam.relayUpgrade[0], sysparam.relayUpgrade[1]);
-    sprintf(message + strlen(message), "SYSONOFF_READ:%d", SYSONOFF_READ);
+    sprintf(message + strlen(message), "SYSONOFF_READ:%d light:%d uncap:%d", SYSONOFF_READ, LDR2_READ, LDR1_READ);
 }
 
 void doACCCTLGNSSInstrucion(ITEM *item, char *message)
@@ -1101,6 +1101,12 @@ static void doRelayInstrucion(ITEM *item, char *message, insMode_e mode, void *p
         bleRelayClearAllReq(BLE_EVENT_SET_DEVON);
         relayAutoClear();
         sysinfo.bleforceCmd = bleDevGetCnt();
+        if (sysparam.relayCloseCmd != 0)
+        {
+			sysparam.relayCloseCmd = 0;
+			paramSaveAll();
+			LogPrintf(DEBUG_ALL, "clear relay close cmd");
+        }
         if (rspTimeOut == -1)
         {
             rspTimeOut = startTimer(300, relayOffRspTimeOut, 0);
@@ -1376,6 +1382,12 @@ static void doRelayForceInstrucion(ITEM *item, char *message)
         bleRelaySetAllReq(BLE_EVENT_SET_DEVOFF | BLE_EVENT_CLR_CNT);
         bleRelayClearAllReq(BLE_EVENT_SET_DEVON);
         sysinfo.bleforceCmd = bleDevGetCnt();
+       	if (sysparam.relayCloseCmd != 0)
+        {
+			sysparam.relayCloseCmd = 0;
+			paramSaveAll();
+			LogPrintf(DEBUG_ALL, "clear relay close cmd");
+        }
         strcpy(message, "Relay force off");
     }
     else
@@ -2454,12 +2466,17 @@ static void doBleDebugInstruction(ITEM *item, char *message)
 	deviceConnInfo_s *devInfo = getDevListInfo();
 	bleDebug_s *debuginfo = getBleDebugInfo();
 	sprintf(message, "sch fsm:%d, ind:%d, tick:%d;", scheduleInfo->fsm, debuginfo->ind, scheduleInfo->runTick);
-	sprintf(message + strlen(message), "ble: use:%d, connpermit:%d, connret:%d, discState:%d ,conntick:%d;", devInfo->use, 
-																	devInfo->connPermit, devInfo->Connret, devInfo->discState,
-																	devInfo->connTick);
-	sprintf(message + strlen(message), "gatt: handle:0x%02x, method:0x%02x, proStatus:0x%02x", debuginfo->connHandle,
+	sprintf(message + strlen(message), "ble0: use:%d, connpermit:%d, connret:%d, discState:%d ,conntick:%d;", devInfo[0].use, 
+																	devInfo[0].connPermit, devInfo[0].Connret, devInfo[0].discState,
+																	devInfo[0].connTick);
+	sprintf(message + strlen(message), "ble1: use:%d, connpermit:%d, connret:%d, discState:%d ,conntick:%d;", devInfo[1].use, 
+																	devInfo[1].connPermit, devInfo[1].Connret, devInfo[1].discState,
+																	devInfo[1].connTick);
+	sprintf(message + strlen(message), "gatt: handle:0x%02x, method:0x%02x, proStatus:0x%02x;", debuginfo->connHandle,
 																				debuginfo->msgMethod, 
 																			 	debuginfo->msgStatus);
+	sprintf(message + strlen(message), "relayoncmd:%d, bleforceCmd:%d;", sysparam.relayCloseCmd, sysinfo.bleforceCmd);
+	
 #else
 	strcpy(message, "Ble debug function is close");
 

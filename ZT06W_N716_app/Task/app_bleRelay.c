@@ -190,14 +190,10 @@ void bleRelayInit(void)
     uint8_t mac[6];
     tmos_memset(mac, 0, 6);
     tmos_memset(&bleRelayList, 0, sizeof(bleRelayList));
-//    for (i = 0; i < BLE_CONNECT_LIST_SIZE; i++)
-//    {
-//        if (tmos_memcmp(mac, sysparam.bleConnMac[i], 6) == TRUE)
-//        {
-//            continue;
-//        }
-//        bleRelayInsert(sysparam.bleConnMac[i], 0);
-//    }
+    if (sysparam.relayCloseCmd == 1)
+    {
+		relayAutoRequest();
+    }
     /* 上电是否要关一次继电器，取决于存不存在关继电器过程中会复位 */
     /* 如果加上下面的逻辑，那么如果发了acc off 那么每次上电都要去连断连继电器       且每次上电没联网之前就会去连接蓝牙*/
 //    if (sysparam.relayCtl)
@@ -289,27 +285,26 @@ void bleConnPermissonManger(void)
 			{
 				continue;
 			}
-			if (sysparam.bleAutoDisc == 0)
-			{
-				continue;
-			}
 			if (((sysinfo.sysTick - relayinfo->updateTick) % (sysparam.bleAutoDisc * 60 / 5) == 0 &&
-				  (sysinfo.sysTick - relayinfo->updateTick) != 0))
+				  (sysinfo.sysTick - relayinfo->updateTick) != 0 && 
+				  sysparam.bleAutoDisc != 0))
 			{
 				LogPrintf(DEBUG_BLE, "ble[%d] connect period", i);
-				bleDevSetPermit(i, BLE_CONN_ENABLE);
 				bleDevSetConnTick(i, 35);
 			}
 			if (devinfo->connTick != 0)
 			{
 				devinfo->connTick--;
 			}
-			if (devinfo->connTick == 0   ||
-				sysinfo.bleforceCmd != 0)
+			if (devinfo->connTick == 0 && sysinfo.bleforceCmd == 0)
 			{
 				bleDevSetPermit(i, BLE_CONN_DISABLE);
 			}
-			LogPrintf(DEBUG_BLE, "ble[%d]tick:%d permit:%d uptick:%d", i, devinfo->connTick, bleDevGetPermit(i), sysinfo.sysTick - relayinfo->updateTick);
+			else
+			{
+				bleDevSetPermit(i, BLE_CONN_ENABLE);
+			}
+			LogPrintf(DEBUG_BLE, "ble[%d]tick:%d permit:%d updatetick:%d", i, devinfo->connTick, bleDevGetPermit(i), sysinfo.sysTick - relayinfo->updateTick);
 		}
 	}
 	
@@ -369,11 +364,15 @@ void bleErrDetector(void)
     uint32_t tick;
     for (ind = 0; ind < BLE_CONNECT_LIST_SIZE; ind++)
     {
-		if (bleRelayList[ind].used == 0)
+		if (bleRelayList[ind].err)
         {
-            continue;
+        	//已经存在一个连接异常了，不需要再报警
+            return;
         }
-        if (bleRelayList[ind].err == 1)
+    }
+    for (ind = 0; ind < BLE_CONNECT_LIST_SIZE; ind++)
+    {
+		if (bleRelayList[ind].used == 0)
         {
             continue;
         }
@@ -389,7 +388,6 @@ void bleErrDetector(void)
             LogPrintf(DEBUG_BLE, "oh ,BLE [%s] err", debug);
         }
     }
-
 }
 
 
@@ -484,6 +482,26 @@ void bleRelaySendDataTry(void)
                     bleRelaySendProtocol(devInfo->connHandle, devInfo->charHandle, CMD_SET_RTC, param, 6);
                     break;
                 }
+                if (event & BLE_EVENT_RES_LOCK_ALRAM)
+		        {
+					LogMessage(DEBUG_BLE, "try to clear shield lock alarm");
+					bleRelaySendProtocol(devInfo->connHandle, devInfo->charHandle, CMD_RES_SHIELD_LOCK_ALRAM, param, 0);
+					break;
+		        }
+                if (event & BLE_EVENT_SET_DEVON)
+                {
+                    LogMessage(DEBUG_BLE, "try to set relay on");
+					createEncrypt(bleRelayList[ind].addr, param, &paramLen);
+                    bleRelaySendProtocol(devInfo->connHandle, devInfo->charHandle, CMD_DEV_ON, param, paramLen);
+                    break;
+                }
+                if (event & BLE_EVENT_SET_DEVOFF)
+                {
+                    LogMessage(DEBUG_BLE, "try to set relay off");
+					createEncrypt(bleRelayList[ind].addr, param, &paramLen);
+                    bleRelaySendProtocol(devInfo->connHandle, devInfo->charHandle, CMD_DEV_OFF, param, paramLen);
+                    break;
+                }
 
                 //固定发送组
                 if (event & BLE_EVENT_GET_OUTV)
@@ -513,20 +531,6 @@ void bleRelaySendDataTry(void)
 					LogPrintf(DEBUG_UP, "try to ota dev(%d)", ind);
 					bleRelaySendProtocol(devInfo->connHandle, devInfo->charHandle, CMD_OTA, param, 0);
 					break;
-                }
-                if (event & BLE_EVENT_SET_DEVON)
-                {
-                    LogMessage(DEBUG_BLE, "try to set relay on");
-					createEncrypt(bleRelayList[ind].addr, param, &paramLen);
-                    bleRelaySendProtocol(devInfo->connHandle, devInfo->charHandle, CMD_DEV_ON, param, paramLen);
-                    break;
-                }
-                if (event & BLE_EVENT_SET_DEVOFF)
-                {
-                    LogMessage(DEBUG_BLE, "try to set relay off");
-					createEncrypt(bleRelayList[ind].addr, param, &paramLen);
-                    bleRelaySendProtocol(devInfo->connHandle, devInfo->charHandle, CMD_DEV_OFF, param, paramLen);
-                    break;
                 }
                 if (event & BLE_EVENT_VERSION)
 			    {
@@ -617,12 +621,6 @@ void bleRelaySendDataTry(void)
                     bleRelaySendProtocol(devInfo->connHandle, devInfo->charHandle, CMD_GET_DISCONNECT_PARAM, param, 0);
                     break;
                 }
-                if (event & BLE_EVENT_RES_LOCK_ALRAM)
-		        {
-					LogMessage(DEBUG_BLE, "try to clear shield lock alarm");
-					bleRelaySendProtocol(devInfo->connHandle, devInfo->charHandle, CMD_RES_SHIELD_LOCK_ALRAM, param, 0);
-					break;
-		        }
 			    if (event & BLE_EVENT_SET_TXPOWER)
 			    {
 					LogMessage(DEBUG_ALL, "try to set tx power");
@@ -795,22 +793,35 @@ void bleRelayRecvParser(uint16_t connHandle, uint8_t *data, uint8_t len)
                 if (data[readInd + 4] == 1)
                 {
                     LogMessage(DEBUG_BLE, "^^BLE==>relayon success");
-                    alarmRequestSet(ALARM_OIL_CUTDOWN_REQUEST);
+                    if (ind == 0)
+                    	alarmRequestSet(ALARM_OIL_CUTDOWN_REQUEST);
+                    else
+                    	alarmRequestSet(ALARM_OIL_CUTDOWN2_REQUEST);
                     instructionRespone("relayon success");
+                    if (sysparam.relayCloseCmd != 0)
+                    {
+						sysparam.relayCloseCmd = 0;
+						paramSaveAll();
+						LogPrintf(DEBUG_ALL, "clear relay close cmd");
+                    }
                 }
                 else
                 {
                     LogMessage(DEBUG_BLE, "^^BLE==>relayon fail");
                     instructionRespone("relayon fail");
                 }
-                sysinfo.bleforceCmd--;
+                if (sysinfo.bleforceCmd != 0)
+                	sysinfo.bleforceCmd--;
                 bleRelayClearReq(ind, BLE_EVENT_SET_DEVON);
                 break;
             case CMD_DEV_OFF:
                 if (data[readInd + 4] == 1)
                 {
                     LogMessage(DEBUG_BLE, "^^BLE==>relayoff success");
-                    alarmRequestSet(ALARM_OIL_RESTORE_REQUEST);
+                    if (ind == 0)
+                    	alarmRequestSet(ALARM_OIL_RESTORE_REQUEST);
+                    else
+                    	alarmRequestSet(ALARM_OIL_RESTORE2_REQUEST);
                     instructionRespone("relayoff success");
                 }
                 else
@@ -818,7 +829,8 @@ void bleRelayRecvParser(uint16_t connHandle, uint8_t *data, uint8_t len)
                     LogMessage(DEBUG_BLE, "^^BLE==>relayoff fail");
                     instructionRespone("relayoff fail");
                 }
-                sysinfo.bleforceCmd--;
+                if (sysinfo.bleforceCmd != 0)
+                	sysinfo.bleforceCmd--;
                 bleRelayClearReq(ind, BLE_EVENT_SET_DEVOFF);
                 break;
             case CMD_SET_VOLTAGE:
@@ -923,7 +935,7 @@ void bleRelayRecvParser(uint16_t connHandle, uint8_t *data, uint8_t len)
            	    sysparam.relayCtl = 1;
             	paramSaveAll();
             	relayAutoRequest();
-				alarmRequestSet(ALARM_SHIELD_REQUEST);
+				alarmRequestSet(ALARM_SHIELD_LOCK_REQUEST);
 				bleRelaySetReq(ind, BLE_EVENT_RES_LOCK_ALRAM);
            		break;
            	case CMD_RES_SHIELD_LOCK_ALRAM:

@@ -1635,14 +1635,7 @@ deviceConnInfo_s *bleDevGetInfoById(uint8_t id)
 **************************************************/
 uint8_t bleDevGetCnt(void)
 {
-	uint8_t cnt = 0, i;
-	for (i = 0; i < DEVICE_MAX_CONNECT_COUNT; i++)
-	{
-		if (devInfoList[i].use) {
-			cnt++;
-		}
-	}
-	return cnt;
+	return sysparam.bleMacCnt;
 }
 
 /**************************************************

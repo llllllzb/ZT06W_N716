@@ -87,6 +87,7 @@ typedef struct
 
     uint16_t gpsuploadonepositiontime;
     uint32_t alarmRequest;
+    uint8_t alarmCnt;
 
     uint32_t gpsRequest;	  /*GPS 开关请求*/
     uint32_t sysTick;    /*系统节拍*/

@@ -952,13 +952,29 @@ void alarmRequestTask(void)
         alarm = 0x19;
         protocolSend(NORMAL_LINK, PROTOCOL_16, &alarm);
     }
+    //油电2恢复报警
+    if (sysinfo.alarmRequest & ALARM_OIL_RESTORE2_REQUEST)
+    {
+        alarmRequestClear(ALARM_OIL_RESTORE2_REQUEST);
+        LogMessage(DEBUG_ALL, "alarmUploadRequest==>oil restore Alarm");
+        alarm = 0x19;
+        protocolSend(NORMAL_LINK, PROTOCOL_16, &alarm);
+    }
+    //信号屏蔽锁车报警
+    if (sysinfo.alarmRequest & ALARM_SHIELD_LOCK_REQUEST)
+    {
+        alarmRequestClear(ALARM_SHIELD_LOCK_REQUEST);
+        LogMessage(DEBUG_ALL, "alarmUploadRequest==>BLE shield lock Alarm");
+        alarm = 0x17;
+        protocolSend(NORMAL_LINK, PROTOCOL_16, &alarm);
+    }
     //信号屏蔽报警
     if (sysinfo.alarmRequest & ALARM_SHIELD_REQUEST)
     {
-        alarmRequestClear(ALARM_SHIELD_REQUEST);
-        LogMessage(DEBUG_ALL, "alarmUploadRequest==>BLE shield Alarm");
-        alarm = 0x17;
-        protocolSend(NORMAL_LINK, PROTOCOL_16, &alarm);
+		alarmRequestClear(ALARM_SHIELD_REQUEST);
+		LogMessage(DEBUG_ALL, "alarmUploadRequest==>BLE shield Alarm");
+		alarm = 0x33;
+		protocolSend(NORMAL_LINK, PROTOCOL_16, &alarm);
     }
     //快速预报警
     if (sysinfo.alarmRequest & ALARM_FAST_PERSHIELD_REQUEST)
@@ -977,11 +993,19 @@ void alarmRequestTask(void)
         alarm = 0x1D;
         protocolSend(NORMAL_LINK, PROTOCOL_16, &alarm);
     }
-    //蓝牙锁定报警
+    //油电断开报警
     if (sysinfo.alarmRequest & ALARM_OIL_CUTDOWN_REQUEST)
     {
         alarmRequestClear(ALARM_OIL_CUTDOWN_REQUEST);
-        LogMessage(DEBUG_ALL, "alarmUploadRequest==>BLE locked Alarm");
+        LogMessage(DEBUG_ALL, "alarmUploadRequest==>oil cutdown Alarm");
+        alarm = 0x1E;
+        protocolSend(NORMAL_LINK, PROTOCOL_16, &alarm);
+    }
+    //油电2断开报警
+    if (sysinfo.alarmRequest & ALARM_OIL_CUTDOWN2_REQUEST)
+    {
+        alarmRequestClear(ALARM_OIL_CUTDOWN2_REQUEST);
+        LogMessage(DEBUG_ALL, "alarmUploadRequest==>oil cutdown Alarm");
         alarm = 0x1E;
         protocolSend(NORMAL_LINK, PROTOCOL_16, &alarm);
     }
@@ -1523,8 +1547,6 @@ static void voltageCheckTask(void)
             if (sysparam.bleRelay != 0 && bleCutFlag != 0)
             {
 				LogMessage(DEBUG_ALL, "ble relay on immediately");
-				sysparam.relayCtl = 1;
-				paramSaveAll();
 				if (sysparam.relayFun)
 				{
 					RELAY_ON;
@@ -1536,7 +1558,11 @@ static void voltageCheckTask(void)
 				else
 				{
 					relayAutoRequest();
+					
 				}
+				sysparam.relayCloseCmd = 1;
+				sysparam.relayCtl = 1;
+				paramSaveAll();
             }
             else
             {
@@ -2166,6 +2192,7 @@ void relayAutoRequest(void)
 {
     sysinfo.doRelayFlag = 1;
     sysinfo.bleforceCmd = bleDevGetCnt();
+    LogPrintf(DEBUG_ALL, "relayAutoRequest==>ok:%d",sysinfo.bleforceCmd);
 }
 
 /**************************************************
@@ -2430,7 +2457,7 @@ static void lightDetectionTask(void)
 		return ;
     }
     curLdrState = LDR2_READ;
-
+	//LogPrintf(DEBUG_ALL, "light:%d tick:%d", curLdrState, darknessTick);
     if (curLdrState == 0)
     {
         //亮
@@ -2452,6 +2479,7 @@ static void lightDetectionTask(void)
 
     //前感光检测
     curLdrState = LDR1_READ;
+    //LogPrintf(DEBUG_ALL, "uncap:%d tick:%d", curLdrState, FrontdarknessTick);
     if (curLdrState == 0)
     {
         //亮

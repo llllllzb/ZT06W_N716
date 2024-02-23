@@ -128,6 +128,7 @@ void paramDefaultInit(uint8_t level)
 	sysparam.shutdownalm = 1;
 	sysparam.shutdownLock = 0;
 	dynamicParam.lowPowerFlag = 0;
+	sysparam.relayCloseCmd = 0;
     paramSaveAll();
     dynamicParamSaveAll();
 }
@@ -144,6 +145,7 @@ void paramInit(void)
     {
 		sysparam.otaParamFlag = OTA_PARAM_FLAG;
 		dynamicParam.lowPowerFlag = 0;
+		sysparam.relayCloseCmd = 0;
 		paramSaveAll();
 		dynamicParamSaveAll();
     }
