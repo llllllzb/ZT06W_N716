@@ -1837,6 +1837,35 @@ static void doUncapAlmInstrucion(ITEM *item, char *message)
     }
 }
 
+static void doShutdownAlmInstrucion(ITEM *item, char *message)
+{
+    if (item->item_data[1][0] == 0 || item->item_data[1][0] == '?')
+    {
+        sprintf(message, "Shutdown alarm was %s", sysparam.shutdownalm ? "Enable" : "Disable");
+        if (sysparam.shutdownLock != 0)
+        {
+            sprintf(message + strlen(message), ", %s locking the car", sysparam.shutdownLock ? "Enable" : "Disable");
+        }
+    }
+    else
+    {
+        sysparam.shutdownalm = atol(item->item_data[1]);
+        sysparam.shutdownLock = 0;
+        if (sysparam.shutdownalm != 0)
+        {
+            sysparam.shutdownLock = atol(item->item_data[2]);
+        }
+        paramSaveAll();
+        sprintf(message, "%s the shutdown alarm", sysparam.shutdownalm ? "Enable" : "Disable");
+
+        if (sysparam.shutdownLock != 0)
+        {
+            sprintf(message + strlen(message), ", %s locking the car", sysparam.shutdownLock ? "Enable" : "Disable");
+        }
+    }
+}
+
+
 static void doSimSelInstrucion(ITEM *item, char *message)
 {
     if (item->item_data[1][0] == 0 || item->item_data[1][0] == '?')
@@ -1883,6 +1912,8 @@ static void doSimPullOutAlmInstrucion(ITEM *item, char *message)
         }
     }
 }
+
+
 
 static void doReadVersionInstruction(ITEM *item, char *message)
 {
@@ -2674,6 +2705,9 @@ static void doinstruction(int16_t cmdid, ITEM *item, insMode_e mode, void *param
 			break;
 		case UNCAPALM_INS:
 			doUncapAlmInstrucion(item, message);
+			break;
+		case SHUTDOWNALM_INS:
+			doShutdownAlmInstrucion(item, message);
 			break;
 		case READVERSION_INS:
 			doReadVersionInstruction(item, message);
