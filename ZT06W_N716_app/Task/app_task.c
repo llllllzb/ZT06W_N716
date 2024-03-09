@@ -24,7 +24,7 @@
 static SystemLEDInfo sysledinfo;
 static motionInfo_s motionInfo;
 static int8_t wifiTimeOutId = -1;
-
+static centralPoint_s centralPoi;
 
 /**************************************************
 @bref		bit0 置位，布防
@@ -301,20 +301,22 @@ static void ledTask(void)
 **************************************************/
 void gpsRequestSet(uint32_t flag)
 {
-//	if (getTerminalAccState() == 0 && centralPoi.init && (flag & GPS_REQUEST_UPLOAD_ONE))
-//	{
-//		gpsinfo_s newgps;
-//		tmos_memcpy(&newgps, &centralPoi.gpsinfo, sizeof(gpsinfo_s));
-//		updateHistoryGpsTime(&newgps);
-//        protocolSend(NORMAL_LINK, PROTOCOL_12, &newgps);
-//	    jt808SendToServer(TERMINAL_POSITION,   &newgps);
-//		return;
-//	}
+	if (getTerminalAccState() == 0 && centralPoi.init && (flag & GPS_REQUEST_UPLOAD_ONE))
+	{
+		gpsinfo_s newgps;
+		tmos_memcpy(&newgps, &centralPoi.gpsinfo, sizeof(gpsinfo_s));
+		updateHistoryGpsTime(&newgps);
+        protocolSend(NORMAL_LINK, PROTOCOL_12, &newgps);
+	    jt808SendToServer(TERMINAL_POSITION,   &newgps);
+		return;
+	}
 	if (dynamicParam.lowPowerFlag == 1)
 	{
 		LogPrintf(DEBUG_ALL, "gpsRequestSet==>low power");
 		return;
 	}
+	if (sysinfo.gpsRequest == 0)
+		agpsRequestSet();
     LogPrintf(DEBUG_ALL, "gpsRequestSet==>0x%04X", flag);
     sysinfo.gpsRequest |= flag;
 }
@@ -511,10 +513,10 @@ static void gpsWait(void)
     {
         runTick = 0;
         gpsChangeFsmState(GPSOPENSTATUS);
-        if (sysinfo.ephemerisFlag == 0)
-        {
-			agpsRequestSet();
-        }
+//        if (sysinfo.ephemerisFlag == 0)
+//        {
+//			agpsRequestSet();
+//        }
     }
 }
 
@@ -603,10 +605,12 @@ static void gpsRequestTask(void)
         gpsInvalidFlagTick = 0;
         return;
     }
-    //如果仅关闭gps，不清除gpsInvalidTick
-    if (sysinfo.gpsRequest == 0)
+    if (sysparam.gpsuploadgap == 0)
     {
-		return;
+        gpsInvalidTick = 0;
+        gpsInvalidFlag = 0;
+        gpsInvalidFlagTick = 0;
+        return;
     }
     gpsInvalidparam = (sysparam.gpsuploadgap < 60) ? 60 : sysparam.gpsuploadgap;
     //LogPrintf(DEBUG_ALL, "gpsInvalidTick:%d  gpsInvalidparam:%d", gpsInvalidTick, gpsInvalidparam);
@@ -635,27 +639,27 @@ static void gpsRequestTask(void)
 @note
 **************************************************/
 
-//void centralPointInit(gpsinfo_s *gpsinfo)
-//{
-//	centralPoi.init = 1;
-//	tmos_memcpy(&centralPoi.gpsinfo, gpsinfo, sizeof(gpsinfo_s));
-//	LogPrintf(DEBUG_ALL, "%s==>lat:%.2f, lon:%.2f", __FUNCTION__,
-//				centralPoi.gpsinfo.latitude, centralPoi.gpsinfo.longtitude);
-//}
+void centralPointInit(gpsinfo_s *gpsinfo)
+{
+	centralPoi.init = 1;
+	tmos_memcpy(&centralPoi.gpsinfo, gpsinfo, sizeof(gpsinfo_s));
+	LogPrintf(DEBUG_ALL, "%s==>lat:%.2f, lon:%.2f", __FUNCTION__,
+				centralPoi.gpsinfo.latitude, centralPoi.gpsinfo.longtitude);
+}
 
-///**************************************************
-//@bref		清除基准点
-//@param
-//@return
-//@note
-//**************************************************/
-//
-//void centralPointClear(void)
-//{
-//	centralPoi.init = 0;
-//	tmos_memset(&centralPoi.gpsinfo, 0, sizeof(gpsinfo_s));
-//	LogPrintf(DEBUG_ALL, "%s==>OK", __FUNCTION__);
-//}
+/**************************************************
+@bref		清除基准点
+@param
+@return
+@note
+**************************************************/
+
+void centralPointClear(void)
+{
+	centralPoi.init = 0;
+	tmos_memset(&centralPoi.gpsinfo, 0, sizeof(gpsinfo_s));
+	LogPrintf(DEBUG_ALL, "%s==>OK", __FUNCTION__);
+}
 
 
 /**************************************************
@@ -693,7 +697,7 @@ static void gpsUplodOnePointTask(void)
             runtick = 0;
             uploadtick = 0;
             gpsRequestClear(GPS_REQUEST_UPLOAD_ONE);
-            if (getTerminalAccState())
+            if (getTerminalAccState() == 0)
             {
             	wifiRequestSet(DEV_EXTEND_OF_MY);
             }
@@ -712,9 +716,9 @@ static void gpsUplodOnePointTask(void)
 		protocolSend(NORMAL_LINK, PROTOCOL_12, getCurrentGPSInfo());
 	    jt808SendToServer(TERMINAL_POSITION, getCurrentGPSInfo());
 	    gpsRequestClear(GPS_REQUEST_UPLOAD_ONE);
-	    if (getTerminalAccState() == 0)
+	    if (getTerminalAccState() == 0 && centralPoi.init == 0)
 	    {
-//			centralPointInit(getCurrentGPSInfo());
+			centralPointInit(getCurrentGPSInfo());
 	    }
     }
 	
@@ -1103,8 +1107,8 @@ static void motionStateUpdate(motion_src_e src, motionState_e newState)
             }
         }
         terminalAccon();
-        //ClearLastMilePoint();
-        //centralPointClear();
+        ClearLastMilePoint();
+        centralPointClear();
         hiddenServerCloseClear();
     }
     else
@@ -1731,6 +1735,7 @@ static void modeStart(void)
             break;
     }
     gpsRequestSet(GPS_REQUEST_UPLOAD_ONE);
+    wifiRequestSet(DEV_EXTEND_OF_MY);
     ledStatusUpdate(SYSTEM_LED_RUN, 1);
     modulePowerOn();
     netResetCsqSearch();
@@ -2046,23 +2051,30 @@ void wifiRequestClear(void)
 
 static void wifiRequestTask(void)
 {
-    if (sysinfo.wifiRequest == 0)
-    {
-        return;
-    }
-    if (primaryServerIsReady() == 0)
-        return;
-    sysinfo.wifiRequest = 0;
+	static uint8_t tick = 0;
+	if (sysinfo.wifiRequest == 0)
+		return;
+	if (primaryServerIsReady() == 0)
+		return;
+	//有AGPS先等AGPS数据读取完完再发WIFI请求
 	if (sysinfo.agpsRequest)
 	{
-		startTimer(70, moduleGetWifiScan, 0);
+		tick++;
+		if (tick >= 15)
+		{
+			tick = 0;
+			goto __WIFI;
+		}
+		return;
 	}
-	else
+__WIFI:
+	tick = 0;
+	sysinfo.wifiRequest = 0;
+	if (sysparam.protocol == ZT_PROTOCOL_TYPE && wifiTimeOutId == -1)
 	{
-		startTimer(30, moduleGetWifiScan, 0);
+		startTimer(20, moduleGetWifiScan, 0);		 
+		wifiTimeOutId = startTimer(300, wifiTimeout, 0);
 	}
-	wifiTimeOutId = startTimer(300, wifiTimeout, 0);
-
 }
 
 /**************************************************
@@ -2646,6 +2658,8 @@ void myTaskPreInit(void)
     paramInit();
     relayInit();
     socketListInit();
+    
+	centralPointClear();
     createSystemTask(outputNode, 2);
     //3秒运行一次可以过滤 3秒内一起重复的报警,例如快速预报警
     createSystemTask(alarmRequestTask, 30);

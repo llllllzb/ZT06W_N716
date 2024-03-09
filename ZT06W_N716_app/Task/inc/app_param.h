@@ -21,9 +21,9 @@
 #define APP_DYNAMIC_PARAM_ADDR	0x2400 //ʵ����0x00070000+APP_DYNAMIC_PARAM_ADDR
 #define APP_PARAM_FLAG          0x1A
 #define BOOT_PARAM_FLAG         0xB0
-#define	OTA_PARAM_FLAG			0x1B
+#define	OTA_PARAM_FLAG			0x1C
 
-#define EEPROM_VERSION									"ZT06W_N716_ZKW_V2.0.8"
+#define EEPROM_VERSION									"ZT06W_N716_ZKW_V2.0.9"
 
 
 #define JT808_PROTOCOL_TYPE			8
@@ -146,7 +146,7 @@ typedef struct
 	uint8_t blefastShieldTime;
 	uint8_t shutdownalm;
 	uint8_t shutdownLock;
-	uint8_t relayCloseCmd;		//简单使用:断电置1，开机判断一次该标志位，若是1则relayAutoRequest，直到relay返回锁车成功或者主动开锁才携程0
+	uint8_t relayCloseCmd;		//简单使�?断电�?，开机判断一次该标志位，若是1则relayAutoRequest，直到relay返回锁车成功或者主动开锁才携程0
 	
 } systemParam_s;
 

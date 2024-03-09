@@ -1552,30 +1552,27 @@ static void wifiapscanParser(uint8_t *buf, uint16_t len)
     }
 	if (wifiList.apcount != 0)
     {
-    	wifiRspSuccess();
-	    gpsinfo_s *gpsinfo;
-		gpsinfo = getCurrentGPSInfo();
-		//当前已经定到位置则不发送lbs
-		if (gpsinfo->fixstatus)
+    	if (wifiList.apcount < 4 && sysinfo.wifiExtendEvt != 0)
 		{
-			sysinfo.wifiExtendEvt = 0;
-			return;
+			lbsRequestSet(DEV_EXTEND_OF_MY);
 		}
-        if (sysinfo.wifiExtendEvt & DEV_EXTEND_OF_MY)
-        {
-        	jt808UpdateWifiinfo(&wifiList);
-            protocolSend(NORMAL_LINK, PROTOCOL_F3, &wifiList);
-            jt808SendToServer(TERMINAL_POSITION, getCurrentGPSInfo());
-        }
-        if (sysinfo.wifiExtendEvt & DEV_EXTEND_OF_BLE)
-        {
-            protocolSend(BLE_LINK, PROTOCOL_F3, &wifiList);
-        }
+		else
+		{
+			if (sysinfo.wifiExtendEvt & DEV_EXTEND_OF_MY)
+		    {
+		    	jt808UpdateWifiinfo(&wifiList);
+		        protocolSend(NORMAL_LINK, PROTOCOL_F3, &wifiList);
+		        jt808SendToServer(TERMINAL_POSITION, getCurrentGPSInfo());
+		    }
+		    if (sysinfo.wifiExtendEvt & DEV_EXTEND_OF_BLE)
+		    {
+		        protocolSend(BLE_LINK, PROTOCOL_F3, &wifiList);
+		    }
+		    lbsRequestClear();
+		}
+    	wifiRspSuccess();
         sysinfo.wifiExtendEvt = 0;
-        
-        lbsRequestClear();
     }
-
 }
 
 /**************************************************

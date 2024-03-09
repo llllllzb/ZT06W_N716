@@ -87,7 +87,7 @@ void paramDefaultInit(uint8_t level)
     sysparam.accctlgnss = 1;
     sysparam.accdetmode = 2;
     sysparam.heartbeatgap = 180;
-    sysparam.ledctrl = 1;
+    sysparam.ledctrl = 0;
     sysparam.poitype = 2;
     sysparam.fence = 30;
     sysparam.accOnVoltage = 13.2;
@@ -146,6 +146,10 @@ void paramInit(void)
 		sysparam.otaParamFlag = OTA_PARAM_FLAG;
 		dynamicParam.lowPowerFlag = 0;
 		sysparam.relayCloseCmd = 0;
+		sysparam.gsdettime = 0;
+		sysparam.gsValidCnt = 0;
+		sysparam.gsInvalidCnt = 0;
+		sysparam.ledctrl = 0;
 		paramSaveAll();
 		dynamicParamSaveAll();
     }

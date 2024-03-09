@@ -68,7 +68,7 @@ void UpdateGsensorDet(uint8_t type)
 	if (type == GSENSOR_ID_DA217)
 	{
 		sysparam.gsdettime=15;
-	    sysparam.gsValidCnt=7;
+	    sysparam.gsValidCnt=4;
 	    sysparam.gsInvalidCnt=0;
 	    LogPrintf(DEBUG_ALL, "UpdateGsensorDet==> %d,%d,%d", sysparam.gsdettime, sysparam.gsValidCnt, sysparam.gsInvalidCnt);
     }

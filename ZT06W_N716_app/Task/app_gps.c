@@ -330,7 +330,7 @@ void parse_TXT(GPSITEM *item)
 	{
 		ephemeriscnt = atoi(item->item_data[5]);
 	}
-	LogPrintf(DEBUG_ALL, "gpsvaild:%d, ephemeriscnt:%d", gpsvaild, ephemeriscnt);
+	//LogPrintf(DEBUG_ALL, "gpsvaild:%d, ephemeriscnt:%d", gpsvaild, ephemeriscnt);
 	if ((gpsvaild == 3 || gpsvaild == 7) && ephemeriscnt >= 8)
 	{
 		sysinfo.ephemerisFlag = 1;
@@ -900,7 +900,7 @@ static int8_t calculateTheGPSCornerPoint(void)
 void gpsUploadPointToServer(void)
 {
     static uint32_t tick = 0;
-    if (sysinfo.gpsOnoff == 0 ||  sysparam.gpsuploadgap == 0 || sysparam.gpsuploadgap >= GPS_UPLOAD_GAP_MAX)
+    if (sysinfo.gpsRequest != GPS_REQUEST_ACC_CTL)
     {
         tick = 0;
         return;
