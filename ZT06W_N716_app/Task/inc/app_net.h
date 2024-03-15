@@ -229,7 +229,7 @@ void moduleFileInfoClear(void);
 void moduleGetCsq(void);
 void moduleGetLbs(void);
 void moduleGetWifiScan(void);
-
+void moduleGetNetstatus(void);
 void sendMessage(uint8_t *buf, uint16_t len, char *telnum);
 void deleteMessage(void);
 void querySendData(uint8_t link);

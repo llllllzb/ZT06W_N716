@@ -40,6 +40,7 @@ void moduleRspSuccess(void)
         timeOutId = -1;
     }
 }
+
 /**************************************************
 @bref		心跳回复，停止定时器，防止模组死机用
 @param
@@ -241,7 +242,7 @@ void privateServerConnTask(void)
     {
         ledStatusUpdate(SYSTEM_LED_NETOK, 0);
         privateServerChangeFsm(SERV_LOGIN);
-        if (unLoginTick++ >= 240)
+        if (unLoginTick++ >= 300)
         {
             unLoginTick = 0;
             moduleReset();
@@ -276,7 +277,7 @@ void privateServerConnTask(void)
                 if (privateServConn.loginCount >= 3)
                 {
                     privateServConn.loginCount = 0;
-                    moduleReset();
+                    //moduleReset();
                 }
             }
             break;

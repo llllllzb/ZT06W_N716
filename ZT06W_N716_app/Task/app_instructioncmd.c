@@ -77,6 +77,7 @@ const instruction_s insCmdTable[] =
     {BTFUPS_INS, "BTFUPS"},
     {UART_INS, "UART"},
     {BLEDEBUG_INS, "BLEDEBUG"},
+    {LOCKTIMER_INS, "LOCKTIMER"},
     {SN_INS, "*"},
 };
 
@@ -128,13 +129,13 @@ static void sendMsgWithMode(uint8_t *buf, uint16_t len, insMode_e mode, void *pa
 
 void instructionRespone(char *message)
 {
-	char buf[50];
-	sprintf(buf, "%s", message);
-	setLastInsid();
-	sendMsgWithMode((uint8_t *)buf, strlen(buf), lastmode, &lastparam);
 	if (rspTimeOut != -1)
 	{
+		char buf[50];
+		sprintf(buf, "%s", message);
 		stopTimer(rspTimeOut);
+		setLastInsid();
+		sendMsgWithMode((uint8_t *)buf, strlen(buf), lastmode, &lastparam);
 	}
 	rspTimeOut = -1;
 }
@@ -608,14 +609,14 @@ void do123Instruction(ITEM *item, insMode_e mode, void *param)
     else if (sysparam.poitype == 1)
     {
         lbsRequestSet(DEV_EXTEND_OF_MY);
-        gpsRequestSet(GPS_REQUEST_UPLOAD_ONE);
+        gpsRequestSet(GPS_REQUEST_123);
         LogMessage(DEBUG_ALL, "LBS and GPS reporting");
     }
     else
     {
         lbsRequestSet(DEV_EXTEND_OF_MY);
         wifiRequestSet(DEV_EXTEND_OF_MY);
-        gpsRequestSet(GPS_REQUEST_UPLOAD_ONE);
+        gpsRequestSet(GPS_REQUEST_123);
         LogMessage(DEBUG_ALL, "LBS ,WIFI and GPS reporting");
     }
     sysinfo.flag123 = 1;
@@ -1213,10 +1214,9 @@ static void doSetBleWarnParamInstruction(ITEM *item, char *message)
             if (bleinfo != NULL)
             {
                 cnt++;
-                sprintf(message + strlen(message), "(%d:[%.2f,%d,%d,%d]) ", i, bleinfo->preV_threshold / 100.0,
+                sprintf(message + strlen(message), "(%d:[%.2f,%d,%d]) ", i, bleinfo->preV_threshold / 100.0,
                         bleinfo->preDetCnt_threshold,
-                        bleinfo->preHold_threshold,
-                        bleinfo->fastPreVDetTime);
+                        bleinfo->preHold_threshold);
             }
         }
         if (cnt == 0)
@@ -1232,8 +1232,6 @@ static void doSetBleWarnParamInstruction(ITEM *item, char *message)
         	sysparam.blePreShieldDetCnt = atoi(item->item_data[2]);
         if (item->item_data[3][0] != 0)
         	sysparam.blePreShieldHoldTime = atoi(item->item_data[3]);
-        if (item->item_data[4][0] != 0)
-        	sysparam.blefastShieldTime = atoi(item->item_data[4]);
 //        if (sysparam.blePreShieldDetCnt >= 60)
 //        {
 //            sysparam.blePreShieldDetCnt = 30;
@@ -2535,6 +2533,52 @@ static void doBleDebugInstruction(ITEM *item, char *message)
 	}
 }
 
+static void doLockTimerInstruction(ITEM *item, char *message)
+{
+	uint8_t i, cnt;
+    bleRelayInfo_s *bleinfo;
+    
+	if (item->item_data[1][0] == 0 || item->item_data[1][0] == '?')
+	{
+		cnt = 0;
+		strcpy(message, "Ble LockTimer:");
+        for (i = 0; i < BLE_CONNECT_LIST_SIZE; i++)
+        {
+            bleinfo = bleRelayGeInfo(i);
+            if (bleinfo != NULL)
+            {
+                cnt++;
+                sprintf(message + strlen(message), "(%d:[%d,%d]) ", i, bleinfo->shieldDetTime, bleinfo->netConnDetTime);
+            }
+        }
+        if (cnt == 0)
+        {
+            sprintf(message, "no ble info");
+        }
+	}
+	else
+	{
+		for (i = 0; i < BLE_CONNECT_LIST_SIZE; i++)
+        {
+            bleinfo = bleRelayGeInfo(i);
+            if (bleinfo != NULL)
+            {
+                bleinfo->shieldDetTime  = 0;
+                bleinfo->netConnDetTime = 0;
+            }
+        }
+        sysparam.shieldDetTime = atoi(item->item_data[1]);
+        sysparam.netConnDetTime = atoi(item->item_data[2]);
+        if (sysparam.shieldDetTime < 30)
+        	sysparam.shieldDetTime = 30;
+        if (sysparam.netConnDetTime < 30)
+        	sysparam.netConnDetTime = 30;
+        paramSaveAll();
+        sprintf(message, "Update ble lock timer to %ds,%ds", sysparam.shieldDetTime, sysparam.netConnDetTime);
+        bleRelaySetAllReq(BLE_EVENT_SET_LOCK_TIME | BLE_EVENT_GET_LOCK_TIME);
+	}
+		
+}
 
 /*--------------------------------------------------------------------------------------*/
 static void doinstruction(int16_t cmdid, ITEM *item, insMode_e mode, void *param)
@@ -2735,6 +2779,9 @@ static void doinstruction(int16_t cmdid, ITEM *item, insMode_e mode, void *param
 			break;
 		case BLEDEBUG_INS:
 			doBleDebugInstruction(item, message);
+			break;
+		case LOCKTIMER_INS:
+			doLockTimerInstruction(item, message);
 			break;
         default:
             if (mode == SMS_MODE)

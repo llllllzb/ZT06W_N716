@@ -75,7 +75,7 @@ typedef enum{
     BTFUPS_INS,
     UART_INS,
     BLEDEBUG_INS,
-    
+    LOCKTIMER_INS,
 }INSTRUCTIONID;
 
 

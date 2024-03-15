@@ -2837,6 +2837,18 @@ void moduleGetCsq(void)
 }
 
 /**************************************************
+@bref		获取网络状态
+@param
+@return
+@note
+**************************************************/
+
+void moduleGetNetstatus(void)
+{
+	sendModuleCmd(CREG_CMD, "?");
+}
+
+/**************************************************
 @bref		获取基站
 @param
 @return

@@ -42,6 +42,8 @@
 #define CMD_CLEAR_SHIELD_LOCK_ALRAM			0x21  //清除屏蔽锁车事件
 #define CMD_SEND_FAST_SHIELD_ALARM			0x22  //发送快速屏蔽报警
 #define CMD_CLEAR_FAST_SHIELD_ALARM			0x23  //清除快速屏蔽报警
+#define CMD_SET_LOCK_TIME_PARAM				0x24  //设置锁车时间参数
+#define CMD_GET_LOCK_TIME_PARAM				0x25  //获取锁车时间参数
 
 
 #define CMD_SET_TXPOWER             		0xA7  //发射功率控制
@@ -91,8 +93,8 @@
 #define BLE_EVENT_OTA			  0x00800000 //OTA
 
 #define BLE_EVENT_CLR_FAST_ALARM  0x01000000 //清除快速预报警
-
-
+#define BLE_EVENT_SET_LOCK_TIME   0x02000000 //设置屏蔽锁车时间
+#define BLE_EVENT_GET_LOCK_TIME	  0x04000000 //读取屏蔽锁车时间
 #define BLE_EVENT_ALL			  0xFFFFFFFF
 
 
@@ -124,6 +126,8 @@ typedef struct
     uint8_t preDetCnt_threshold;    //预警检测次数
     uint8_t preHold_threshold;      //预警保持
     uint8_t fastPreVDetTime;		//快速预屏蔽检测时间
+	uint8_t shieldDetTime;	  		// 屏蔽锁车时间构成：
+	uint8_t netConnDetTime;	  		// 屏蔽锁车时间 = 屏蔽干扰检测时间 + 网络信号检测时间
     uint8_t disc_threshold;         //断连阈值
     uint8_t version[25];			//继电器版本
     uint8_t upgradeFlag;			//是否需要升级状态
@@ -190,6 +194,7 @@ void bleRelaySetReq(uint8_t ind, uint32_t req);
 void bleRelaySetAllReq(uint32_t req);
 void bleRelayClearReq(uint8_t ind, uint32_t req);
 void bleRelayClearAllReq(uint32_t req);
+uint32_t bleRelayGetReq(uint8_t ind, uint32_t req);
 bleRelayInfo_s *bleRelayGeInfo(uint8_t i);
 void bleRelayDeleteAll(void);
 void bleRelayInit(void);
@@ -199,6 +204,7 @@ void bleRelayRecvParser(uint16_t connHandle, uint8_t *data, uint8_t len);
 void bleRelaySendDataTry(void);
 void blePeriodTask(void);
 void bleConnPermissonManger(void);
+void chkNetRspSuccess(void);
 
 
 #endif /* TASK_INC_APP_BLERELAY_H_ */

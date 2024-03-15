@@ -9,6 +9,7 @@
 #include "app_task.h"
 #include "app_server.h"
 #include "app_db.h"
+#include "app_bleRelay.h"
 static jt808Info_s jt808_info;
 static jt808Position_s jt808_position;
 static jt808TerminalRsp jt808_terminalRespon;
@@ -1270,6 +1271,7 @@ static void jt808GenericResponParser(uint8_t *msg, uint16_t len)
     result = msg[4];
     LogMessage(DEBUG_ALL, "Generic Respon");
 	hbtRspSuccess();
+	chkNetRspSuccess();
     switch (protocol)
     {
         case TERMINAL_AUTHENTICATION_MSGID:

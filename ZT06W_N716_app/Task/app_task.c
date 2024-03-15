@@ -378,18 +378,37 @@ static void gpsChangeFsmState(uint8_t state)
 @return
 @note
 **************************************************/
+
 void saveGpsHistory(void)
 {
 	gpsinfo_s *gpsinfo;
-	gpsinfo = getCurrentGPSInfo();
-	if (gpsinfo->fixstatus)
+	float latitude, longtitude;
+	gpsinfo = getLastFixedGPSInfo();
+	if (gpsinfo->fixstatus != 0)
 	{
-		dynamicParam.saveLat = (uint16_t)gpsinfo->latitude;
-		dynamicParam.saveLon = (uint16_t)gpsinfo->longtitude;
+		latitude = gpsinfo->latitude;
+		longtitude = gpsinfo->longtitude;
+		if (gpsinfo->NS == 'S')
+		{
+			if (latitude > 0)
+			{
+				latitude *= -1;
+			}
+		}
+		if (gpsinfo->EW == 'W')
+		{
+			if (longtitude > 0)
+			{
+				longtitude *= -1;
+			}
+		}
+		dynamicParam.saveLat = latitude;
+		dynamicParam.saveLon = longtitude;
+		LogPrintf(DEBUG_ALL, "Save Latitude:%f,Longtitude:%f\r\n", dynamicParam.saveLat, dynamicParam.saveLon);
 		dynamicParamSaveAll();
-		LogPrintf(DEBUG_ALL, "saveGpsHistory==>lat:%d  lon:%d", dynamicParam.saveLat, dynamicParam.saveLon);
 	}
 }
+
 
 /**************************************************
 @bref		gps数据接收
@@ -558,7 +577,7 @@ static void gpsRequestTask(void)
 {
     gpsinfo_s *gpsinfo;
 	static uint8_t gpsInvalidFlag = 0, gpsInvalidFlagTick = 0;
-	static uint16_t gpsInvalidTick = 0;
+	static uint32_t gpsInvalidTick = 0;
 	uint16_t gpsInvalidparam;
     switch (sysinfo.gpsFsm)
     {
@@ -617,11 +636,15 @@ static void gpsRequestTask(void)
     gpsinfo = getCurrentGPSInfo();
     if (gpsinfo->fixstatus == 0)
     {
-        if (++gpsInvalidTick >= gpsInvalidparam)
+    	gpsInvalidTick++;
+        if (gpsInvalidTick % gpsInvalidparam == 0)
         {
-            gpsInvalidTick = 0;
-            gpsInvalidFlag = 1;
     		wifiRequestSet(DEV_EXTEND_OF_MY);
+        }
+        if (gpsInvalidTick >= 900 && gpsInvalidFlag == 0)
+        {
+			alarmRequestSet(ALARM_GPS_NO_FIX_REQUEST);
+			gpsInvalidFlag = 1;
         }
     }
     else
@@ -681,7 +704,7 @@ static void gpsUplodOnePointTask(void)
     	uploadtick = 0;
         return;
     }
-    if (gpsRequestGet(GPS_REQUEST_UPLOAD_ONE) == 0)
+    if (gpsRequestGet(GPS_REQUEST_UPLOAD_ONE | GPS_REQUEST_123) == 0)
     {
         runtick    = 0;
         uploadtick = 0;
@@ -696,7 +719,7 @@ static void gpsUplodOnePointTask(void)
         {
             runtick = 0;
             uploadtick = 0;
-            gpsRequestClear(GPS_REQUEST_UPLOAD_ONE);
+            gpsRequestClear(GPS_REQUEST_UPLOAD_ONE | GPS_REQUEST_123);
             if (getTerminalAccState() == 0)
             {
             	wifiRequestSet(DEV_EXTEND_OF_MY);
@@ -715,7 +738,7 @@ static void gpsUplodOnePointTask(void)
         }
 		protocolSend(NORMAL_LINK, PROTOCOL_12, getCurrentGPSInfo());
 	    jt808SendToServer(TERMINAL_POSITION, getCurrentGPSInfo());
-	    gpsRequestClear(GPS_REQUEST_UPLOAD_ONE);
+	    gpsRequestClear(GPS_REQUEST_UPLOAD_ONE | GPS_REQUEST_123);
 	    if (getTerminalAccState() == 0 && centralPoi.init == 0)
 	    {
 			centralPointInit(getCurrentGPSInfo());
@@ -1051,6 +1074,14 @@ void alarmRequestTask(void)
         alarmRequestClear(ALARM_UNCAP_REQUEST);
         LogMessage(DEBUG_ALL, "alarmUploadRequest==>开盖报警");
         alarm = 0x31;
+        protocolSend(NORMAL_LINK, PROTOCOL_16, &alarm);
+    }
+   	//gps未定位异常报警
+    if (sysinfo.alarmRequest & ALARM_GPS_NO_FIX_REQUEST)
+    {
+        alarmRequestClear(ALARM_GPS_NO_FIX_REQUEST);
+        LogMessage(DEBUG_ALL, "alarmUploadRequest==>gps err Alarm");
+        alarm = 0x1C;
         protocolSend(NORMAL_LINK, PROTOCOL_16, &alarm);
     }
 }
@@ -2590,6 +2621,7 @@ void taskRunInSecond(void)
     lbsRequestTask();
     wifiRequestTask();
     lightDetectionTask();
+    alarmRequestTask();
     sysModeRunTask();
     serverManageTask();
 	autoSleepTask();
@@ -2662,7 +2694,7 @@ void myTaskPreInit(void)
 	centralPointClear();
     createSystemTask(outputNode, 2);
     //3秒运行一次可以过滤 3秒内一起重复的报警,例如快速预报警
-    createSystemTask(alarmRequestTask, 30);
+    //createSystemTask(alarmRequestTask, 30);
     
     sysinfo.sysTaskId = createSystemTask(taskRunInSecond, 10);
     LogMessage(DEBUG_ALL, ">>>>>>>>>>>>>>>>>>>>>");
@@ -2701,7 +2733,6 @@ static tmosEvents myTaskEventProcess(tmosTaskID taskID, tmosEvents events)
     {
         pollUartData();
         portWdtFeed();
-        
         return events ^ APP_TASK_POLLUART_EVENT;
     }
     return 0;

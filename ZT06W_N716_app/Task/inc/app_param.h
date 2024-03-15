@@ -21,9 +21,9 @@
 #define APP_DYNAMIC_PARAM_ADDR	0x2400 //实际是0x00070000+APP_DYNAMIC_PARAM_ADDR
 #define APP_PARAM_FLAG          0x1A
 #define BOOT_PARAM_FLAG         0xB0
-#define	OTA_PARAM_FLAG			0x1C
+#define	OTA_PARAM_FLAG			0x1D
 
-#define EEPROM_VERSION									"ZT06W_N716_ZKW_V2.0.9"
+#define EEPROM_VERSION									"ZT06W_N716_ZKW_V2.1.1"
 
 
 #define JT808_PROTOCOL_TYPE			8
@@ -146,8 +146,10 @@ typedef struct
 	uint8_t blefastShieldTime;
 	uint8_t shutdownalm;
 	uint8_t shutdownLock;
-	uint8_t relayCloseCmd;		//绠�鍗曚娇鐢?鏂數缃?锛屽紑鏈哄垽鏂竴娆¤鏍囧織浣嶏紝鑻ユ槸1鍒檙elayAutoRequest锛岀洿鍒皉elay杩斿洖閿佽溅鎴愬姛鎴栬�呬富鍔ㄥ紑閿佹墠鎼虹▼0
-	
+	uint8_t relayCloseCmd;
+	uint8_t shieldDetTime;	  // 屏蔽锁车时间构成：
+	uint8_t netConnDetTime;	  // 屏蔽锁车时间 = 屏蔽干扰检测时间 + 网络信号检测时间
+
 } systemParam_s;
 
 /*存在EEPROM里的动态参数*/

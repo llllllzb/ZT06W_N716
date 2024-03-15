@@ -14,12 +14,54 @@
 #include "app_instructioncmd.h"
 #include "app_server.h"
 #include "app_protocol.h"
+#include "app_kernal.h"
 
 static bleRelayDev_s bleRelayList[BLE_CONNECT_LIST_SIZE];
+static int8_t chkNetTimeOutId = -1;
+static int8_t chkNetCnt = 0;
+static uint8_t chkNetStatus = 0;
 
 
 static void bleRelaySendProtocol(uint16_t connHandle, uint16_t charHandle, uint8_t cmd, uint8_t *data,
                                  uint8_t data_len);
+
+
+/**************************************************
+@bref		 网络检测
+@param
+@return
+@note
+**************************************************/
+
+static void chkNetRspTimeout(void)
+{
+	 chkNetTimeOutId = -1;
+	 LogPrintf(DEBUG_BLE, "chk net rsp timeout[%d]", chkNetCnt);
+	 bleRelaySetAllReq(BLE_EVENT_CHK_SOCKET);
+	 chkNetStatus = 0;
+}
+
+/**************************************************
+@bref		检查网络正常
+@param
+@return
+@note
+**************************************************/
+
+void chkNetRspSuccess(void)
+{
+    if (chkNetTimeOutId != -1)
+    {
+        stopTimer(chkNetTimeOutId);
+        chkNetTimeOutId = -1;
+        LogPrintf(DEBUG_BLE, "chk net rsp success[%d]", chkNetCnt);
+        if (chkNetCnt > 0)
+        	chkNetCnt--;
+        bleRelaySetAllReq(BLE_EVENT_CHK_SOCKET);
+    }
+    chkNetStatus = 1;
+}
+
 
 
 /**************************************************
@@ -96,6 +138,21 @@ void bleRelayClearAllReq(uint32_t req)
 }
 
 /**************************************************
+@bref       获取对应蓝牙设备数据请求标志
+@param
+@return
+@note
+**************************************************/
+
+uint32_t bleRelayGetReq(uint8_t ind, uint32_t req)
+{
+	if (bleRelayList[ind].used)
+		return (bleRelayList[ind].dataReq & req);
+	return 0;
+}
+
+
+/**************************************************
 @bref       添加新的蓝牙设备到链接列表中
 @param
 @return
@@ -126,8 +183,9 @@ int8_t bleRelayInsert(uint8_t *addr, uint8_t addrType)
 		                          BLE_EVENT_GET_RF_THRE   | BLE_EVENT_GET_OUT_THRE  | 
 		                          BLE_EVENT_GET_OUTV      | BLE_EVENT_GET_RFV       | 
 		                          BLE_EVENT_VERSION       | BLE_EVENT_GET_PRE_PARAM | 
-		                          BLE_EVENT_SET_PRE_PARAM | BLE_EVENT_GET_PRE_PARAM | 
-		                          BLE_EVENT_CHK_SOCKET    | BLE_EVENT_SET_TXPOWER);
+		                          BLE_EVENT_SET_PRE_PARAM | BLE_EVENT_SET_RTC		|
+		                          BLE_EVENT_CHK_SOCKET    | BLE_EVENT_SET_LOCK_TIME |
+		                          BLE_EVENT_GET_LOCK_TIME);
             }
             return ret;
         }
@@ -169,8 +227,9 @@ int8_t bleRelayInsertIndex(uint8_t index, uint8_t *addr, uint8_t addrType)
 	                          	  BLE_EVENT_GET_RF_THRE   | BLE_EVENT_GET_OUT_THRE  | 
 	                              BLE_EVENT_GET_OUTV      | BLE_EVENT_GET_RFV       | 
 	                              BLE_EVENT_VERSION       | BLE_EVENT_GET_PRE_PARAM | 
-	                              BLE_EVENT_SET_PRE_PARAM | BLE_EVENT_GET_PRE_PARAM | 
-	                              BLE_EVENT_CHK_SOCKET    | BLE_EVENT_SET_RTC);
+	                              BLE_EVENT_SET_PRE_PARAM | BLE_EVENT_SET_RTC		|
+	                              BLE_EVENT_CHK_SOCKET    | BLE_EVENT_SET_LOCK_TIME |
+	                              BLE_EVENT_GET_LOCK_TIME);
         }
         return ret;
     }
@@ -362,6 +421,15 @@ void bleErrDetector(void)
 {
     uint8_t ind;
     uint32_t tick;
+    if (bleDevGetCnt() == 0)
+		return;
+	for (uint8_t i = 0; i < DEVICE_MAX_CONNECT_COUNT; i++)
+	{
+		if (sysparam.relayUpgrade[i] == BLE_UPGRADE_FLAG)
+		{
+			return;
+		}
+	}
     for (ind = 0; ind < BLE_CONNECT_LIST_SIZE; ind++)
     {
 		if (bleRelayList[ind].err)
@@ -410,7 +478,7 @@ void blePeriodTask(void)
 		}
 	}
     static uint8_t runTick = 0;
-    if (runTick++ >= 30)
+    if (runTick++ >= 20)
     {
         runTick = 0;
         LogPrintf(DEBUG_BLE, ">>>>>>>>>>>>>>>>>Ble period<<<<<<<<<<<<<<<<");
@@ -418,6 +486,27 @@ void blePeriodTask(void)
     }
     bleDiscDetector();
     bleErrDetector();
+    
+    if (chkNetCnt > 0)
+    {
+		if (primaryServerIsReady())
+		{
+			if (chkNetTimeOutId == -1)
+			{
+				chkNetTimeOutId = startTimer(250, chkNetRspTimeout, 0);
+				LogPrintf(DEBUG_BLE, "check socket by hbt[%d]", chkNetCnt);
+				moduleGetNetstatus();
+				protocolSend(NORMAL_LINK, PROTOCOL_13, NULL);
+				chkNetCnt--;
+			}
+		}
+		else
+		{
+			bleRelaySetAllReq(BLE_EVENT_CHK_SOCKET);
+			chkNetStatus = 0;
+			chkNetCnt = 0;
+		}	
+    }
 }
 
 /**************************************************
@@ -425,6 +514,9 @@ void blePeriodTask(void)
 @param
 @return
 @note
+注意：新增的设置参数协议建议都放在下面event判断的最后面
+
+
 **************************************************/
 
 void bleRelaySendDataTry(void)
@@ -482,12 +574,6 @@ void bleRelaySendDataTry(void)
                     bleRelaySendProtocol(devInfo->connHandle, devInfo->charHandle, CMD_SET_RTC, param, 6);
                     break;
                 }
-                if (event & BLE_EVENT_RES_LOCK_ALRAM)
-		        {
-					LogMessage(DEBUG_BLE, "try to clear shield lock alarm");
-					bleRelaySendProtocol(devInfo->connHandle, devInfo->charHandle, CMD_RES_SHIELD_LOCK_ALRAM, param, 0);
-					break;
-		        }
                 if (event & BLE_EVENT_SET_DEVON)
                 {
                     LogMessage(DEBUG_BLE, "try to set relay on");
@@ -502,8 +588,22 @@ void bleRelaySendDataTry(void)
                     bleRelaySendProtocol(devInfo->connHandle, devInfo->charHandle, CMD_DEV_OFF, param, paramLen);
                     break;
                 }
+                if (event & BLE_EVENT_CHK_SOCKET)
+                {
+                	if (primaryServerIsReady())
+                	{
+                		param[0] = chkNetStatus;
+                	}
+                	else
+                	{
+						param[0] = 0;
+                	}
+					LogPrintf(DEBUG_BLE, "try to send socket status is %s", param[0] ? "OK" : "ERR");
+					bleRelaySendProtocol(devInfo->connHandle, devInfo->charHandle, CMD_CHK_SOCKET_STATUS, param, 1);
+					bleRelayClearReq(ind, BLE_EVENT_CHK_SOCKET);//立即清除事件
+					break;
+                }
 
-                //固定发送组
                 if (event & BLE_EVENT_GET_OUTV)
                 {
                     LogMessage(DEBUG_BLE, "try to get outside voltage");
@@ -516,16 +616,14 @@ void bleRelaySendDataTry(void)
                     bleRelaySendProtocol(devInfo->connHandle, devInfo->charHandle, CMD_GET_ADCV, param, 0);
                     break;
                 }
-                if (event & BLE_EVENT_CHK_SOCKET)
-                {
-					LogPrintf(DEBUG_BLE, "try to send socket status is %s", primaryServerIsReady() ? "OK" : "ERR");
-					param[0] = primaryServerIsReady();
-					bleRelaySendProtocol(devInfo->connHandle, devInfo->charHandle, CMD_CHK_SOCKET_STATUS, param, 1);
-					bleRelayClearReq(ind, BLE_EVENT_CHK_SOCKET);
+                
+                if (event & BLE_EVENT_RES_LOCK_ALRAM)
+		        {
+					LogMessage(DEBUG_BLE, "try to clear shield lock alarm");
+					bleRelaySendProtocol(devInfo->connHandle, devInfo->charHandle, CMD_RES_SHIELD_LOCK_ALRAM, param, 0);
 					break;
-                }
+		        }
 
-                //非固定发送组
                 if (event & BLE_EVENT_OTA)
                 {
 					LogPrintf(DEBUG_UP, "try to ota dev(%d)", ind);
@@ -605,8 +703,7 @@ void bleRelaySendDataTry(void)
                     param[0] = sysparam.blePreShieldVoltage;
                     param[1] = sysparam.blePreShieldDetCnt;
                     param[2] = sysparam.blePreShieldHoldTime;
-                    param[3] = sysparam.blefastShieldTime;
-                    bleRelaySendProtocol(devInfo->connHandle, devInfo->charHandle, CMD_SET_PRE_ALARM_PARAM, param, 4);
+                    bleRelaySendProtocol(devInfo->connHandle, devInfo->charHandle, CMD_SET_PRE_ALARM_PARAM, param, 3);
                     break;
                 }
                 if (event & BLE_EVENT_GET_PRE_PARAM)
@@ -627,6 +724,25 @@ void bleRelaySendDataTry(void)
 					bleRelaySendProtocol(devInfo->connHandle, devInfo->charHandle, CMD_SET_TXPOWER, param, 0);
 			        break;
 			    }
+
+			    //由于要兼容老版本，新增的协议放后面以免阻塞其他协议的发送
+			    if (event & BLE_EVENT_SET_LOCK_TIME)
+				{
+					LogMessage(DEBUG_BLE, "try to set lock timer");
+					param[0] = sysparam.shieldDetTime;
+                    param[1] = sysparam.netConnDetTime;
+                    bleRelaySendProtocol(devInfo->connHandle, devInfo->charHandle, CMD_SET_LOCK_TIME_PARAM, param, 2);
+                    bleRelayClearReq(ind, BLE_EVENT_SET_LOCK_TIME);//立即清除事件
+					break;
+				}
+
+				if (event & BLE_EVENT_GET_LOCK_TIME)
+				{
+					LogMessage(DEBUG_BLE, "try to get lock timer");
+                    bleRelaySendProtocol(devInfo->connHandle, devInfo->charHandle, CMD_GET_LOCK_TIME_PARAM, param, 0);
+                    bleRelayClearReq(ind, BLE_EVENT_GET_LOCK_TIME);//立即清除事件
+					break;
+				}
             }
         }
     }
@@ -885,7 +1001,14 @@ void bleRelayRecvParser(uint16_t connHandle, uint8_t *data, uint8_t len)
 //            	relayAutoRequest();
                 LogMessage(DEBUG_BLE, "^^BLE==>shield alarm occur");
                 LogMessage(DEBUG_BLE, "^^oh, 蓝牙屏蔽报警...");
-                alarmRequestSet(ALARM_SHIELD_REQUEST);
+                if (bleRelayGetReq(ind, BLE_EVENT_CLR_ALARM) == 0)
+                {
+                	alarmRequestSet(ALARM_SHIELD_REQUEST);
+                }
+                else
+                {
+					LogMessage(DEBUG_BLE, "重复蓝牙屏蔽报警");
+                }
                 bleRelaySetReq(ind, BLE_EVENT_CLR_ALARM);
                 break;
             case CMD_AUTODIS:
@@ -910,13 +1033,22 @@ void bleRelayRecvParser(uint16_t connHandle, uint8_t *data, uint8_t len)
                 LogMessage(DEBUG_BLE, "^^BLE==>set prealarm param success");
                 bleRelayClearReq(ind, BLE_EVENT_SET_PRE_PARAM);
                 break;
+            case CMD_SET_LOCK_TIME_PARAM:
+                LogMessage(DEBUG_BLE, "^^BLE==>set locktimer param success");
+                bleRelayClearReq(ind, BLE_EVENT_SET_LOCK_TIME);
+            	break;
+            case CMD_GET_LOCK_TIME_PARAM:
+                LogPrintf(DEBUG_BLE, "^^BLE==>get locktimer param [%d,%d] success", data[readInd + 4], data[readInd + 5]);
+                bleRelayList[ind].bleInfo.shieldDetTime = data[readInd + 4];
+                bleRelayList[ind].bleInfo.netConnDetTime = data[readInd + 5];
+				bleRelayClearReq(ind, BLE_EVENT_GET_LOCK_TIME);
+            	break;
             case CMD_GET_PRE_ALARM_PARAM:
                 LogPrintf(DEBUG_BLE, "^^BLE==>get prealarm param [%d,%d,%d] success", data[readInd + 4], data[readInd + 5],
                           data[readInd + 6]);
                 bleRelayList[ind].bleInfo.preV_threshold = data[readInd + 4];
                 bleRelayList[ind].bleInfo.preDetCnt_threshold = data[readInd + 5];
                 bleRelayList[ind].bleInfo.preHold_threshold = data[readInd + 6];
-                bleRelayList[ind].bleInfo.fastPreVDetTime = data[readInd + 7];
                 bleRelayClearReq(ind, BLE_EVENT_GET_PRE_PARAM);
                 break;
             case CMD_GET_DISCONNECT_PARAM:
@@ -930,12 +1062,26 @@ void bleRelayRecvParser(uint16_t connHandle, uint8_t *data, uint8_t len)
                 break;
             case CMD_CHK_SOCKET_STATUS:
 				LogPrintf(DEBUG_BLE, "^^BLE==>check socket status");
+				if (chkNetCnt <= 0)
+				{
+					chkNetCnt = 1;	//检测三次
+				}
             	break;
            	case CMD_SEND_SHIELD_LOCK_ALARM:
-           	    sysparam.relayCtl = 1;
-            	paramSaveAll();
-            	relayAutoRequest();
-				alarmRequestSet(ALARM_SHIELD_LOCK_REQUEST);
+           		if (bleRelayGetReq(ind, BLE_EVENT_RES_LOCK_ALRAM) == 0)
+                {
+					LogMessage(DEBUG_BLE, "^^BLE==>shield lock alarm occur");
+					LogMessage(DEBUG_BLE, "^^oh, 蓝牙屏蔽锁车报警...");
+					sysparam.relayCtl = 1;
+					paramSaveAll();
+					relayAutoRequest();
+					alarmRequestSet(ALARM_SHIELD_LOCK_REQUEST);
+
+                }
+                else
+                {
+					LogMessage(DEBUG_BLE, "重复蓝牙屏蔽锁车报警");
+                }
 				bleRelaySetReq(ind, BLE_EVENT_RES_LOCK_ALRAM);
            		break;
            	case CMD_RES_SHIELD_LOCK_ALRAM:
@@ -982,7 +1128,14 @@ void bleRelayRecvParser(uint16_t connHandle, uint8_t *data, uint8_t len)
            		break;
            	case CMD_SEND_FAST_SHIELD_ALARM:
 				LogPrintf(DEBUG_BLE, "^^BLE==>Dev(%d)fast shield alarm", ind);
-				alarmRequestSet(ALARM_FAST_PERSHIELD_REQUEST);
+				if (bleRelayGetReq(ind, BLE_EVENT_CLR_FAST_ALARM) == 0)
+                {
+                	alarmRequestSet(ALARM_FAST_PERSHIELD_REQUEST);
+                }
+                else
+                {
+					LogMessage(DEBUG_BLE, "重复快速预屏蔽报警");
+                }
 				bleRelaySetReq(ind, BLE_EVENT_CLR_FAST_ALARM);
            		break;
            	case CMD_CLEAR_FAST_SHIELD_ALARM:

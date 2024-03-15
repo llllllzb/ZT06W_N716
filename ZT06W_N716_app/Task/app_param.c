@@ -99,14 +99,14 @@ void paramDefaultInit(uint8_t level)
     sysparam.bleOutThreshold = 1320;
     sysparam.bleAutoDisc = 0;
     sysparam.blePreShieldVoltage = 120;
-    sysparam.blePreShieldDetCnt = 10;
-    sysparam.blePreShieldHoldTime = 30;
+    sysparam.blePreShieldDetCnt = 1;
+    sysparam.blePreShieldHoldTime = 1;
     sysparam.blefastShieldTime = 3;
     sysparam.relaySpeed = 20;
     sysparam.protectVoltage = 4.6;
     sysparam.bf = 0;
-    sysparam.gsdettime = 0;
-    sysparam.gsValidCnt = 0;
+    sysparam.gsdettime = 15;
+    sysparam.gsValidCnt = 5;
     sysparam.gsInvalidCnt = 0;
     sysparam.hiddenServOnoff = 1;
     sysparam.agpsen = 1;
@@ -129,6 +129,8 @@ void paramDefaultInit(uint8_t level)
 	sysparam.shutdownLock = 0;
 	dynamicParam.lowPowerFlag = 0;
 	sysparam.relayCloseCmd = 0;
+	sysparam.shieldDetTime  = 60;
+	sysparam.netConnDetTime = 120;
     paramSaveAll();
     dynamicParamSaveAll();
 }
@@ -146,10 +148,19 @@ void paramInit(void)
 		sysparam.otaParamFlag = OTA_PARAM_FLAG;
 		dynamicParam.lowPowerFlag = 0;
 		sysparam.relayCloseCmd = 0;
-		sysparam.gsdettime = 0;
-		sysparam.gsValidCnt = 0;
+		/* gsensor灵敏度 */
+		sysparam.gsdettime = 15;
+		sysparam.gsValidCnt = 5;
 		sysparam.gsInvalidCnt = 0;
+		/* led */
 		sysparam.ledctrl = 0;
+		/* 锁车时间 */
+		sysparam.shieldDetTime  = 60;
+		sysparam.netConnDetTime = 120;
+		/* 快速报警 */
+		sysparam.blePreShieldVoltage = 120;
+	    sysparam.blePreShieldDetCnt = 1;
+	    sysparam.blePreShieldHoldTime = 1;
 		paramSaveAll();
 		dynamicParamSaveAll();
     }
