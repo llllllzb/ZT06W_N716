@@ -382,7 +382,7 @@ static void gpsChangeFsmState(uint8_t state)
 void saveGpsHistory(void)
 {
 	gpsinfo_s *gpsinfo;
-	float latitude, longtitude;
+	double latitude, longtitude;
 	gpsinfo = getLastFixedGPSInfo();
 	if (gpsinfo->fixstatus != 0)
 	{
@@ -402,9 +402,9 @@ void saveGpsHistory(void)
 				longtitude *= -1;
 			}
 		}
-		dynamicParam.saveLat = latitude;
-		dynamicParam.saveLon = longtitude;
-		LogPrintf(DEBUG_ALL, "Save Latitude:%f,Longtitude:%f\r\n", dynamicParam.saveLat, dynamicParam.saveLon);
+		dynamicParam.saveLat = (int16_t)latitude;
+		dynamicParam.saveLon = (int16_t)longtitude;
+		LogPrintf(DEBUG_ALL, "Save Latitude:%d,Longtitude:%d", dynamicParam.saveLat, dynamicParam.saveLon);
 		dynamicParamSaveAll();
 	}
 }
@@ -1273,9 +1273,11 @@ static void motionCheckTask(void)
     static uint8_t vFlag = 0;
     static uint8_t alarmFlag = 0;
     static uint8_t detTick = 0;
-    static uint8_t motionState = 0;
+    static uint8_t accdetmode2OnTick = 0;
+    static uint8_t accdetmode2OffTick = 0;
+    static uint8_t motionState = 0;	//只由Gsensor来判断
     gpsinfo_s *gpsinfo;
-
+	static uint8_t gsensorState;
     uint16_t totalCnt, staticTime;
 
     motionCalculate();
@@ -1402,8 +1404,56 @@ static void motionCheckTask(void)
         }
 
     }
+    else if (sysparam.accdetmode == ACCDETMODE2 && sysinfo.outsidevoltage < sysparam.accOffVoltage)
+    {
+    	//检测到震动
+        if (motionState)
+        {
+        	accdetmode2OnTick = 0;
+    		if (accdetmode2OffTick <= 200)
+    			accdetmode2OffTick++;
+			if (accdetmode2OffTick >= 10)
+			{
+				if (gpsRequestGet(GPS_REQ_MOVE) == 0)
+	            {
+	                alarmFlag = 0;
+	                detTick = 0;
+	                gpsRequestSet(GPS_REQ_MOVE);
+	                LogMessage(DEBUG_ALL, "疑似被拖车，开启GPS");
+	            }
+			}
+        }
+        //在这里用gpsRequestGet(GPS_REQ_MOVE)来判断gsensor是否震动
+
+        //是否拖车报警检测，判断速度
+		if (alarmFlag == 0 && sysinfo.gpsOnoff && gpsRequestGet(GPS_REQ_MOVE))
+		{
+			gpsinfo = getCurrentGPSInfo();
+			if (gpsinfo->fixstatus && gpsinfo->speed >= 30)
+			{
+				detTick++;
+				if (detTick >= 60)
+				{
+					//拖车报警
+					alarmFlag = 1;
+					alarmRequestSet(ALARM_TRIAL_REQUEST);
+					detTick = 0;
+				}
+			}
+			else
+			{
+				detTick = 0;
+			}
+		}
+		else
+		{
+			detTick = 0;
+		}
+    }
     else
     {
+	    detTick = 0;
+		accdetmode2OffTick = 0;
         alarmFlag = 0;
         //其他模式不需要这个request
         if (gpsRequestGet(GPS_REQ_MOVE) == GPS_REQ_MOVE)
@@ -1411,7 +1461,7 @@ static void motionCheckTask(void)
             gpsRequestClear(GPS_REQ_MOVE);
         }
     }
-
+	LogPrintf(DEBUG_ALL, "detTick:%d, accdetmode2OffTick:%d", detTick, accdetmode2OffTick);
     if (ACC_READ == ACC_STATE_ON)
     {
         //线永远是第一优先级
@@ -1478,6 +1528,7 @@ static void motionCheckTask(void)
     if (motionState)
     {
         motionStateUpdate(GSENSOR_SRC, MOTION_MOVING);
+        gsensorState = 1;
     }
     if (motionState == 0)
     {
@@ -1500,6 +1551,13 @@ static void motionCheckTask(void)
         if (gsStaticTick >= staticTime)
         {
             motionStateUpdate(GSENSOR_SRC, MOTION_STATIC);
+            gsensorState = 0;
+            if (gpsRequestGet(GPS_REQ_MOVE) == GPS_REQ_MOVE)
+	        {
+	            gpsRequestClear(GPS_REQ_MOVE);
+	            accdetmode2OffTick = 0;
+	            detTick = 0;
+	        }
         }
     }
     else
@@ -2566,7 +2624,7 @@ static void autoShutDownTask(void)
 		tick = 0;
 		return;
 	}
-	if (tick++ >= 20)
+	if (tick++ >= 30)
 	{
 		if (usart2_ctl.init)
 		{

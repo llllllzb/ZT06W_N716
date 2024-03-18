@@ -1245,8 +1245,8 @@ static void doSetBleWarnParamInstruction(ITEM *item, char *message)
 //            sysparam.blePreShieldHoldTime = 1;
 //       }
         paramSaveAll();
-        sprintf(message, "Update ble warnning param to %d,%d,%d,%d", sysparam.blePreShieldVoltage, sysparam.blePreShieldDetCnt,
-                sysparam.blePreShieldHoldTime, sysparam.blefastShieldTime);
+        sprintf(message, "Update ble warnning param to %d,%d,%d", sysparam.blePreShieldVoltage, sysparam.blePreShieldDetCnt,
+                sysparam.blePreShieldHoldTime);
         for (i = 0; i < BLE_CONNECT_LIST_SIZE; i++)
         {
             bleinfo = bleRelayGeInfo(i);

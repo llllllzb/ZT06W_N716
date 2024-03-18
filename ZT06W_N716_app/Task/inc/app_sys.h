@@ -64,6 +64,7 @@ typedef struct
 	uint8_t ephemerisFlag			: 1;
 	uint8_t bleUpgradeOnoff			: 1;
 	uint8_t bleUpsForceStop			: 1;
+	uint8_t bleConnErr				: 1;
     uint8_t lbsExtendEvt;
     uint8_t wifiExtendEvt;
     uint8_t ringWakeUpTick;

@@ -900,7 +900,7 @@ void createProtocolA0(char *DestBuf, uint16_t *len)
 {
 	int pdu_len;
     int ret;
-    uint16_t lat, lon;
+    int16_t lat, lon;
     pdu_len = createProtocolHead(DestBuf, 0xA0);
 	ret = packIMEI(dynamicParam.SN, DestBuf + pdu_len);
     if (ret < 0)
@@ -917,9 +917,9 @@ void createProtocolA0(char *DestBuf, uint16_t *len)
     DestBuf[pdu_len++] = getCid() >> 16;
     DestBuf[pdu_len++] = getCid() >> 8;
     DestBuf[pdu_len++] = getCid();
-    lat = (uint16_t)ABS(dynamicParam.saveLat);
-    lon = (uint16_t)ABS(dynamicParam.saveLon);  
-    LogPrintf(DEBUG_ALL, "Lat %f %d  Lon %f %d", dynamicParam.saveLat, lat, dynamicParam.saveLon, lon);
+    lat = dynamicParam.saveLat;
+    lon = dynamicParam.saveLon;  
+    LogPrintf(DEBUG_ALL, "Lat %d  Lon %d", dynamicParam.saveLat, dynamicParam.saveLon);
     if (dynamicParam.saveLat < 0)
     {
 		DestBuf[pdu_len] |= 0x80;

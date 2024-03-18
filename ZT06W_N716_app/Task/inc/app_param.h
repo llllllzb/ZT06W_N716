@@ -23,7 +23,7 @@
 #define BOOT_PARAM_FLAG         0xB0
 #define	OTA_PARAM_FLAG			0x1D
 
-#define EEPROM_VERSION									"ZT06W_N716_ZKW_V2.1.1"
+#define EEPROM_VERSION									"ZT06W_N716_ZKW_V2.1.2"
 
 
 #define JT808_PROTOCOL_TYPE			8
@@ -165,8 +165,8 @@ typedef struct
     uint8_t jt808AuthLen;
 
 	uint16_t noNmeaRstCnt;
-	uint16_t saveLat;
-	uint16_t saveLon;
+	int16_t saveLat;
+	int16_t saveLon;
 	int32_t rtcOffset;
 	uint8_t sim;
 	uint8_t lowPowerFlag;		//当读取外电小于5时，且电池小于3.5V时，该标志位置1，直到有外电接入为止再置0

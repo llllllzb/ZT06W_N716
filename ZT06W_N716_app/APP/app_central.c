@@ -1700,6 +1700,18 @@ void bleDevAllPermitDisable(void)
 }
 
 /**************************************************
+@bref       获取指令蓝牙的连接权限
+@param
+@return
+@note
+**************************************************/
+
+uint8_t bleDevPermitGet(uint8_t ind)
+{
+	return devInfoList[ind].connPermit;
+}
+
+/**************************************************
 @bref       蓝牙连接时间设置
 @param
 @return
@@ -1777,8 +1789,6 @@ bleDebug_s *getBleDebugInfo(void)
 {
 	return &bleDbg;
 }
-
-
 
 #endif
 

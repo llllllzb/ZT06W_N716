@@ -155,6 +155,7 @@ uint8_t bleDevGetPermit(uint8_t id);
 void bleDevSetConnTick(uint8_t id, uint16_t tick);
 uint8_t bleCentralRead(uint16_t connHandle, uint16_t attrHandle);
 void bleDevAllPermitDisable(void);
+uint8_t bleDevPermitGet(uint8_t ind);
 
 static void bleDevDiscoverServByUuid(void);
 int bleDevGetIdByHandle(uint16_t connHandle);

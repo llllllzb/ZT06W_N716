@@ -319,16 +319,27 @@ void bleConnPermissonManger(void)
 	{
 		if (sysparam.relayUpgrade[i] == BLE_UPGRADE_FLAG)
 		{
-
 			bleDevAllPermitDisable();
 			bleDevSetPermit(i, BLE_CONN_ENABLE);
 			return;
 		}
 	}
+	
 	if (primaryServerIsReady())
-	{
-		bleDevSetPermit(BLE_ID_0, BLE_CONN_ENABLE);
-		bleDevSetPermit(BLE_ID_1, BLE_CONN_ENABLE);
+	{
+		for (i = 0; i < bleDevGetCnt(); i++)
+		{
+			if (bleDevPermitGet(i) == BLE_CONN_DISABLE)
+			{
+				bleDevSetPermit(i, BLE_CONN_ENABLE);
+				relayinfo = bleRelayGeInfo(i);
+				if (relayinfo != NULL)
+				{
+					relayinfo->updateTick = sysinfo.sysTick;
+				}
+				LogPrintf(DEBUG_BLE, "ble[%d] permit enable", i);
+			}
+		}
 	}
 	else if (primaryServerIsReady() == 0)
 	{
@@ -366,7 +377,6 @@ void bleConnPermissonManger(void)
 			LogPrintf(DEBUG_BLE, "ble[%d]tick:%d permit:%d updatetick:%d", i, devinfo->connTick, bleDevGetPermit(i), sysinfo.sysTick - relayinfo->updateTick);
 		}
 	}
-	
 }
 
 
@@ -419,36 +429,51 @@ static void bleDiscDetector(void)
 
 void bleErrDetector(void)
 {
-    uint8_t ind;
+    uint8_t ind, cnt;
     uint32_t tick;
-    if (bleDevGetCnt() == 0)
-		return;
-	for (uint8_t i = 0; i < DEVICE_MAX_CONNECT_COUNT; i++)
+    deviceConnInfo_s *devinfo;
+	if (sysinfo.bleConnErr)
 	{
-		if (sysparam.relayUpgrade[i] == BLE_UPGRADE_FLAG)
+		/* 蓝牙全部恢复才能再次检测蓝牙连接异常 */
+		for (ind = 0; ind < bleDevGetCnt(); ind++)
 		{
-			return;
+			if (bleRelayList[ind].used == 0)
+		    {
+		        continue;
+		    }
+		    devinfo = bleDevGetInfoById(ind);
+		    if (devinfo->connPermit == 0)
+		    {
+				continue;
+		    }
+		    tick = sysinfo.sysTick - bleRelayList[ind].bleInfo.updateTick;
+		    if (tick <= 30)
+		    	cnt++;
 		}
-	}
-    for (ind = 0; ind < BLE_CONNECT_LIST_SIZE; ind++)
-    {
-		if (bleRelayList[ind].err)
-        {
-        	//已经存在一个连接异常了，不需要再报警
-            return;
+		if (cnt == bleDevGetCnt())
+		{
+    		sysinfo.bleConnErr = 0;
+        	LogPrintf(DEBUG_BLE, "^^BLE return to normal work");
         }
-    }
-    for (ind = 0; ind < BLE_CONNECT_LIST_SIZE; ind++)
+		return;
+	}
+    for (ind = 0; ind < bleDevGetCnt(); ind++)
     {
 		if (bleRelayList[ind].used == 0)
         {
             continue;
         }
+		devinfo = bleDevGetInfoById(ind);
+		if (devinfo->connPermit == 0)
+		{
+			continue;
+		}
         tick = sysinfo.sysTick - bleRelayList[ind].bleInfo.updateTick;
-        //LogPrintf(DEBUG_BLE, "Dev(%d) errtick:%d", ind, tick);
+        LogPrintf(DEBUG_BLE, "Dev(%d) errtick:%d", ind, tick);
+        /* 有一个蓝牙断连5分钟便报警 */
         if (tick >= 300)
         {
-        	bleRelayList[ind].err = 1;
+        	sysinfo.bleConnErr = 1;
 			alarmRequestSet(ALARM_BLE_ERR_REQUEST);
 			char debug[20];
 			byteToHexString(bleRelayList[ind].addr, debug, 6);
@@ -886,13 +911,7 @@ void bleRelayRecvParser(uint16_t connHandle, uint8_t *data, uint8_t len)
             debug[12] = 0;
             LogPrintf(DEBUG_BLE, "^^BLE %s restore", debug);
         }
-        if (bleRelayList[ind].err == 1)
-        {
-        	bleRelayList[ind].err = 0;
-			byteToHexString(bleRelayList[ind].addr, debug, 6);
-            debug[12] = 0;
-            LogPrintf(DEBUG_BLE, "^^BLE %s return to normal work", debug);
-        }
+
         bleRelayList[ind].bleInfo.bleLost = 0;
         switch (data[readInd + 3])
         {
