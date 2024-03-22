@@ -1147,13 +1147,16 @@ void bleRelayRecvParser(uint16_t connHandle, uint8_t *data, uint8_t len)
            		break;
            	case CMD_SEND_FAST_SHIELD_ALARM:
 				LogPrintf(DEBUG_BLE, "^^BLE==>Dev(%d)fast shield alarm", ind);
-				if (bleRelayGetReq(ind, BLE_EVENT_CLR_FAST_ALARM) == 0)
-                {
-                	alarmRequestSet(ALARM_FAST_PERSHIELD_REQUEST);
-                }
-                else
-                {
-					LogMessage(DEBUG_BLE, "重复快速预屏蔽报警");
+				if (sysparam.rfDetType == 0)
+				{
+					if (bleRelayGetReq(ind, BLE_EVENT_CLR_FAST_ALARM) == 0)
+	                {
+	                	alarmRequestSet(ALARM_FAST_PERSHIELD_REQUEST);
+	                }
+	                else
+	                {
+						LogMessage(DEBUG_BLE, "重复快速预屏蔽报警");
+	                }
                 }
 				bleRelaySetReq(ind, BLE_EVENT_CLR_FAST_ALARM);
            		break;

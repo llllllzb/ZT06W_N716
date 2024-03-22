@@ -6,6 +6,8 @@
 #define SYSTEM_LED_RUN					0X01
 #define SYSTEM_LED_NETOK				0X02
 #define SYSTEM_LED_GPSOK				0X04	//∆’Õ®GPS
+#define SYSTEM_LED_TEST					0X08
+#define SYSTEM_LED_TEST2				0X10
 
 #define GPSLED1							0
 

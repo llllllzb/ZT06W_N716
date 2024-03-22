@@ -611,7 +611,7 @@ void portLdrGpioCfg(void)
 }
 
 /**
- * @brief   ACC GPIO初始化
+ * @brief   ACC/RF WIRE GPIO初始化
  * @param
  * @return
  */

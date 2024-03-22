@@ -78,6 +78,7 @@ const instruction_s insCmdTable[] =
     {UART_INS, "UART"},
     {BLEDEBUG_INS, "BLEDEBUG"},
     {LOCKTIMER_INS, "LOCKTIMER"},
+    {RFDETTYPE_INS, "RFDETTYPE"},
     {SN_INS, "*"},
 };
 
@@ -845,7 +846,8 @@ void doDebugInstrucion(ITEM *item, char *message)
     sprintf(message + strlen(message), "bleConnStatus[%s]:%s", sysinfo.bleConnStatus ? "CONNECTED" : "DISCONNECTED", appPeripheralParamCallback());
     sprintf(message + strlen(message), "upgrade server:%s serverfsm:%d blefsm:%d bleupgrade:%d  %d", 
     	upgradeServerIsReady() ? "Yes" : "No", getUpgradeServerFsm(), getBleOtaFsm(), sysparam.relayUpgrade[0], sysparam.relayUpgrade[1]);
-    sprintf(message + strlen(message), "SYSONOFF_READ:%d light:%d uncap:%d", SYSONOFF_READ, LDR2_READ, LDR1_READ);
+    sprintf(message + strlen(message), "SYSONOFF_READ:%d light:%d uncap:%d acc:%d", SYSONOFF_READ, LDR2_READ, LDR1_READ, ACC_READ);
+
 }
 
 void doACCCTLGNSSInstrucion(ITEM *item, char *message)
@@ -885,6 +887,8 @@ void doAccdetmodeInstruction(ITEM *item, char *message)
         {
             case ACCDETMODE0:
                 sprintf(message, "The device is use acc wire to determine whether ACC is ON or OFF.");
+                if (sysparam.rfDetType)
+                	strcpy(message + strlen(message), "But rf detect type is wire,so only use gsensor");
                 break;
             case ACCDETMODE1:
                 sprintf(message, "The device is use acc wire first and voltage second to determine whether ACC is ON or OFF.");
@@ -901,7 +905,11 @@ void doAccdetmodeInstruction(ITEM *item, char *message)
         switch (sysparam.accdetmode)
         {
             case ACCDETMODE0:
-                sprintf(message, "The device is use acc wire to determine whether ACC is ON or OFF.");
+           	 	if (sysparam.rfDetType == 0)
+                	sprintf(message, "The device is use acc wire to determine whether ACC is ON or OFF.");
+                else
+                	sprintf(message, "Rf detect type is wire,so use gsensor");
+                	sysparam.accdetmode = 2;
                 break;
             case ACCDETMODE1:
                 sprintf(message, "The device is use acc wire first and voltage second to determine whether ACC is ON or OFF.");
@@ -2580,6 +2588,29 @@ static void doLockTimerInstruction(ITEM *item, char *message)
 		
 }
 
+static void doRfDetTypeInstruction(ITEM *item, char *message)
+{
+	if (item->item_data[1][0] == 0 || item->item_data[1][0] == '?')
+	{
+		sprintf(message, "Rf detect type is %s", sysparam.rfDetType ? "wire" : "ble");
+	}
+	else
+	{
+		if (atoi(item->item_data[1]) == 0)
+		{
+			sysparam.rfDetType = 0;
+		}
+		else
+		{
+			sysparam.rfDetType = 1;
+		}
+		paramSaveAll();
+		sprintf(message, "Update rf detect type to %s", sysparam.rfDetType ? "wire" : "ble");
+		if (sysparam.rfDetType)
+			strcpy(message + strlen(message), ",and disable the acc wire function");
+	}
+}
+
 /*--------------------------------------------------------------------------------------*/
 static void doinstruction(int16_t cmdid, ITEM *item, insMode_e mode, void *param)
 {
@@ -2782,6 +2813,9 @@ static void doinstruction(int16_t cmdid, ITEM *item, insMode_e mode, void *param
 			break;
 		case LOCKTIMER_INS:
 			doLockTimerInstruction(item, message);
+			break;
+		case RFDETTYPE_INS:
+			doRfDetTypeInstruction(item, message);
 			break;
         default:
             if (mode == SMS_MODE)

@@ -913,6 +913,16 @@ void alarmRequestTask(void)
     {
         return;
     }
+   	//快速预报警
+    if (sysinfo.alarmRequest & ALARM_FAST_PERSHIELD_REQUEST)
+	{
+		alarmRequestClear(ALARM_FAST_PERSHIELD_REQUEST);
+        LogMessage(DEBUG_ALL, "alarmUploadRequest==>BLE fast shield Alarm");
+        alarm = 0x38;
+        protocolSend(NORMAL_LINK, PROTOCOL_16, &alarm);
+        sysinfo.fastGap = sysinfo.sysTick;
+	}
+	
     //感光报警
     if (sysinfo.alarmRequest & ALARM_LIGHT_REQUEST)
     {
@@ -1003,15 +1013,6 @@ void alarmRequestTask(void)
 		alarm = 0x33;
 		protocolSend(NORMAL_LINK, PROTOCOL_16, &alarm);
     }
-    //快速预报警
-    if (sysinfo.alarmRequest & ALARM_FAST_PERSHIELD_REQUEST)
-	{
-		alarmRequestClear(ALARM_FAST_PERSHIELD_REQUEST);
-        LogMessage(DEBUG_ALL, "alarmUploadRequest==>BLE fast shield Alarm");
-        alarm = 0x38;
-        protocolSend(NORMAL_LINK, PROTOCOL_16, &alarm);
-        sysinfo.fastGap = sysinfo.sysTick;
-	}
     //蓝牙预警报警
     if (sysinfo.alarmRequest & ALARM_PREWARN_REQUEST)
     {
@@ -1462,27 +1463,30 @@ static void motionCheckTask(void)
         }
     }
 	LogPrintf(DEBUG_ALL, "detTick:%d, accdetmode2OffTick:%d", detTick, accdetmode2OffTick);
-    if (ACC_READ == ACC_STATE_ON)
-    {
-        //线永远是第一优先级
-        if (++accOnTick >= 10)
-        {
-            accOnTick = 0;
-            motionStateUpdate(ACC_SRC, MOTION_MOVING);
-        }
-        accOffTick = 0;
-        return;
-    }
-    accOnTick = 0;
-    if (sysparam.accdetmode == ACCDETMODE0)
-    {
-        //仅由acc线控制
-        if (++accOffTick >= 10)
-        {
-            accOffTick = 0;
-            motionStateUpdate(ACC_SRC, MOTION_STATIC);
-        }
-        return;
+	if (sysparam.rfDetType == 0)
+	{
+	    if (ACC_READ == ACC_STATE_ON)
+	    {
+	        //线永远是第一优先级
+	        if (++accOnTick >= 10)
+	        {
+	            accOnTick = 0;
+	            motionStateUpdate(ACC_SRC, MOTION_MOVING);
+	        }
+	        accOffTick = 0;
+	        return;
+	    }
+	    accOnTick = 0;
+	    if (sysparam.accdetmode == ACCDETMODE0)
+	    {
+	        //仅由acc线控制
+	        if (++accOffTick >= 10)
+	        {
+	            accOffTick = 0;
+	            motionStateUpdate(ACC_SRC, MOTION_STATIC);
+	        }
+	        return;
+	    }
     }
 
     if (sysparam.accdetmode == ACCDETMODE1 || sysparam.accdetmode == ACCDETMODE3)
@@ -2644,7 +2648,7 @@ static void autoShutDownTask(void)
         shutdownTick = 0;
         return;
     }
-    ledStatusUpdate(SYSTEM_LED_RUN, 0);
+
     if (shutdownTick >= 3 && sysparam.shutdownalm != 0 && flag == 0)
     {
         alarmRequestSet(ALARM_SHUTDOWN_REQUEST);
@@ -2721,6 +2725,56 @@ void doDebugRecvPoll(uint8_t *msg, uint16_t len)
     }
 }
 
+void rfDetectByWire(void)
+{
+	uint8_t rf;
+	static uint8_t rftick = 0;
+	static uint8_t unrftick = 0;
+	static uint8_t flag = 0;
+	if (sysparam.rfDetType == 0)
+	{
+		rftick = 0;
+		unrftick = 0;
+		flag = 0;
+		return;
+	}
+
+	if (usart2_ctl.init)
+	{
+		rftick = 0;
+		unrftick = 0;
+		flag = 0;
+		return;
+	}
+	rf = ACC_READ;
+
+	if (rf == 0)
+	{
+		unrftick = 0;
+		if (flag == 0)
+		{
+			rftick++;
+			if (rftick >= 4) //200ms
+			{
+				flag = 1;
+				alarmRequestSet(ALARM_FAST_PERSHIELD_REQUEST);
+
+			}
+		}
+	}
+	else
+	{
+		rftick = 0;
+		if (flag)
+		{
+			if (unrftick++ >= 100)
+			{
+				flag = 0;
+			}
+		}
+	}
+}
+
 /**************************************************
 @bref		系统启动时配置
 @param
@@ -2751,8 +2805,6 @@ void myTaskPreInit(void)
     
 	centralPointClear();
     createSystemTask(outputNode, 2);
-    //3秒运行一次可以过滤 3秒内一起重复的报警,例如快速预报警
-    //createSystemTask(alarmRequestTask, 30);
     
     sysinfo.sysTaskId = createSystemTask(taskRunInSecond, 10);
     LogMessage(DEBUG_ALL, ">>>>>>>>>>>>>>>>>>>>>");
@@ -2791,6 +2843,7 @@ static tmosEvents myTaskEventProcess(tmosTaskID taskID, tmosEvents events)
     {
         pollUartData();
         portWdtFeed();
+        rfDetectByWire();
         return events ^ APP_TASK_POLLUART_EVENT;
     }
     return 0;
