@@ -23,7 +23,7 @@
 #define BOOT_PARAM_FLAG         0xB0
 #define	OTA_PARAM_FLAG			0x20
 
-#define EEPROM_VERSION									"ZT06W_N716_ZKW_V2.1.3"
+#define EEPROM_VERSION									"ZT06W_N716_ZKW_V2.1.5"
 
 
 #define JT808_PROTOCOL_TYPE			8

@@ -1433,7 +1433,7 @@ static void motionCheckTask(void)
 			if (gpsinfo->fixstatus && gpsinfo->speed >= 30)
 			{
 				detTick++;
-				if (detTick >= 60)
+				if (detTick >= 900)
 				{
 					//ÍÏ³µ±¨¾¯
 					alarmFlag = 1;
@@ -2683,7 +2683,6 @@ void taskRunInSecond(void)
     lbsRequestTask();
     wifiRequestTask();
     lightDetectionTask();
-    alarmRequestTask();
     sysModeRunTask();
     serverManageTask();
 	autoSleepTask();
@@ -2805,7 +2804,7 @@ void myTaskPreInit(void)
     
 	centralPointClear();
     createSystemTask(outputNode, 2);
-    
+    createSystemTask(alarmRequestTask, 1);
     sysinfo.sysTaskId = createSystemTask(taskRunInSecond, 10);
     LogMessage(DEBUG_ALL, ">>>>>>>>>>>>>>>>>>>>>");
     LogPrintf(DEBUG_ALL, "¡¾%s¡¿SYS_GetLastResetSta:%x", VER_LIB, SYS_GetLastResetSta());

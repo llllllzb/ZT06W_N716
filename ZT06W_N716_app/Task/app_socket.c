@@ -250,7 +250,7 @@ void socketSchedule(void)
                 socketSchChange(SOCKET_SCHEDULE_END);
 
             }
-            else if (sockSchInfo.runTick > 90)
+            else if (sockSchInfo.runTick > 60)
             {
                 LogPrintf(DEBUG_ALL, "Socket[%d] connect timeout", sockSchInfo.ind);
                 socketSchChange(SOCKET_SCHEDULE_END);

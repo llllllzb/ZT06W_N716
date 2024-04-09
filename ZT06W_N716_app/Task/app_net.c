@@ -852,6 +852,7 @@ void netConnectTask(void)
 			if (moduleState.xiicOk)
 			{
 				moduleState.xiicOk = 0;
+				moduleState.xiicSet = 0;
 				moduleCtrl.xiicCount = 0;
 				changeProcess(NORMAL_STATUS);
 			}
@@ -1853,11 +1854,12 @@ void tcpsetupRspParser(uint8_t *buf, uint16_t len)
         return;
     }
     //这个既可能是参数写错，也可能是网断了
-//	index = my_getstrindex(rebuf, "+TCPSETUP: ERROR", relen);
-//	if (index >= 0)
-//	{
-//		changeProcess(CPIN_STATUS);
-//	}
+	index = my_getstrindex(rebuf, "+TCPSETUP: ERROR", relen);
+	if (index >= 0)
+	{
+		socketDelAll();
+		changeProcess(CPIN_STATUS);
+	}
     index = my_getstrindex(rebuf, "+TCPSETUP: 0,OK", relen);
     if (index >= 0)
     {
@@ -1954,7 +1956,7 @@ void tcpsetupRspParser(uint8_t *buf, uint16_t len)
     {
         socketSetConnState(UPGRADE_LINK, SOCKET_CONN_ERR);
     }
-	if (moduleCtrl.qiopenCount >= 4)
+	if (moduleCtrl.qiopenCount >= 10)
 	{
 		moduleCtrl.qiopenCount = 0;
 		moduleReset();
@@ -2091,6 +2093,7 @@ void tcpsendParser(uint8_t *buf, uint16_t len)
 		if (moduleState.curSendId == NORMAL_LINK ||
 		    moduleState.curSendId == JT808_LINK)
 		{
+			socketDelAll();
 			changeProcess(CPIN_STATUS);
 		}
     }

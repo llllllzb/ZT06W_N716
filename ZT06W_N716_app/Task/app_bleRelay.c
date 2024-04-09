@@ -1091,11 +1091,13 @@ void bleRelayRecvParser(uint16_t connHandle, uint8_t *data, uint8_t len)
                 {
 					LogMessage(DEBUG_BLE, "^^BLE==>shield lock alarm occur");
 					LogMessage(DEBUG_BLE, "^^oh, À¶ÑÀÆÁ±ÎËø³µ±¨¾¯...");
+					RELAY_ON;
 					sysparam.relayCtl = 1;
 					paramSaveAll();
-					relayAutoRequest();
+					relayAutoClear();
+					bleRelaySetAllReq(BLE_EVENT_SET_DEVON);
+					bleRelayClearAllReq(BLE_EVENT_SET_DEVOFF);
 					alarmRequestSet(ALARM_SHIELD_LOCK_REQUEST);
-
                 }
                 else
                 {

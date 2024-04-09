@@ -132,10 +132,11 @@ void instructionRespone(char *message)
 {
 	if (rspTimeOut != -1)
 	{
-		char buf[50];
+		char buf[50] = { 0 };
 		sprintf(buf, "%s", message);
 		stopTimer(rspTimeOut);
 		setLastInsid();
+
 		sendMsgWithMode((uint8_t *)buf, strlen(buf), lastmode, &lastparam);
 	}
 	rspTimeOut = -1;
@@ -143,20 +144,18 @@ void instructionRespone(char *message)
 
 static void relayOnRspTimeOut(void)
 {
-	if (rspTimeOut != -1)
-	{
-		instructionRespone("Relay on fail:Time out");
-	}
+	char buf[50] = {"Relay on fail:Time out"};
+	setLastInsid();
+	sendMsgWithMode((uint8_t *)buf, strlen(buf), lastmode, &lastparam);
 	rspTimeOut = -1;
 }
 
 static void relayOffRspTimeOut(void)
 {
-    if (rspTimeOut != -1)
-    {
-        instructionRespone("Relay off fail:Time out");
-    }
-    rspTimeOut = -1;
+	char buf[50] = {"Relay off fail:Time out"};
+	setLastInsid();
+	sendMsgWithMode((uint8_t *)buf, strlen(buf), lastmode, &lastparam);
+	rspTimeOut = -1;
 }
 
 static void doParamInstruction(ITEM *item, char *message)
