@@ -21,9 +21,9 @@
 #define APP_DYNAMIC_PARAM_ADDR	0x2400 //实际是0x00070000+APP_DYNAMIC_PARAM_ADDR
 #define APP_PARAM_FLAG          0x1A
 #define BOOT_PARAM_FLAG         0xB0
-#define	OTA_PARAM_FLAG			0x20
+#define	OTA_PARAM_FLAG			0x21
 
-#define EEPROM_VERSION									"ZT06W_N716_ZKW_V2.1.5"
+#define EEPROM_VERSION									"ZT06W_N716_ZKW_V2.1.6"
 
 
 #define JT808_PROTOCOL_TYPE			8
@@ -151,6 +151,8 @@ typedef struct
 	uint8_t netConnDetTime;	  // 屏蔽锁车时间 = 屏蔽干扰检测时间 + 网络信号检测时间
 
 	uint8_t rfDetType;
+	uint8_t shieldDetectVol;	// 屏蔽检测电压
+	uint8_t shieldDetectTime;	// 屏蔽检测时间
 
 } systemParam_s;
 

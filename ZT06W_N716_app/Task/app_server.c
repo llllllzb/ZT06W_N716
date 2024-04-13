@@ -145,6 +145,13 @@ void privateServerLoginSuccess(void)
     moduleSleepCtl(1);
     ledStatusUpdate(SYSTEM_LED_NETOK, 1);
     privateServerChangeFsm(SERV_READY);
+   	/*
+		前提：发送报警服务器有回复会清除sysparam.alarmRequest
+		发送报警存在的问题：由于发送报警协议的时候都会清除sysinfo.alarmRequest，
+		但是可能因为网络不好导致发送报警失败，这时因为一些模组重启机制，就导致这次的报警丢失
+		所以每次登录成功后查询sysparam.alarmRequest一次，如果sysparam.alarmRequest不为0，就可以再次补发报警
+    */
+    alarmRequestSaveGet();
 }
 /**************************************************
 @bref		socket数据接收

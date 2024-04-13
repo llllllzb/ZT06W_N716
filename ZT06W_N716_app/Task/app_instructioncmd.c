@@ -45,6 +45,7 @@ const instruction_s insCmdTable[] =
     {READPARAM_INS, "READPARAM"},
     {SETBLEPARAM_INS, "SETBLEPARAM"},
     {SETBLEWARNPARAM_INS, "SETBLEWARNPARAM"},
+    {SETBLERFPARAM_INS, "SETBLERFPARAM"},
     {SETBLEMAC_INS, "SETBLEMAC"},
     {RELAYSPEED_INS, "RELAYSPEED"},
     {RELAYFORCE_INS, "RELAYFORCE"},
@@ -1267,6 +1268,51 @@ static void doSetBleWarnParamInstruction(ITEM *item, char *message)
         bleRelaySetAllReq(BLE_EVENT_SET_PRE_PARAM | BLE_EVENT_GET_PRE_PARAM);
     }
 }
+
+static void doSetBleRfParamInstruction(ITEM *item, char *message)
+{
+	uint8_t i, cnt;
+    bleRelayInfo_s *bleinfo;
+    if (item->item_data[1][0] == 0 || item->item_data[1][0] == '?')
+    {
+        cnt = 0;
+
+        for (i = 0; i < BLE_CONNECT_LIST_SIZE; i++)
+        {
+            bleinfo = bleRelayGeInfo(i);
+            if (bleinfo != NULL)
+            {
+                cnt++;
+                sprintf(message + strlen(message), "(%d:[%.2f,%d]) ", i, bleinfo->shieldDetectVol / 100.0, bleinfo->shieldDetectTime);
+            }
+        }
+        if (cnt == 0)
+        {
+            sprintf(message, "no ble info");
+        }
+       
+        bleRelaySetAllReq(BLE_EVENT_GET_RF_PARAM);
+    }
+    else
+    {
+        for (i = 0; i < BLE_CONNECT_LIST_SIZE; i++)
+        {
+            bleinfo = bleRelayGeInfo(i);
+            if (bleinfo != NULL)
+            {
+                bleinfo->rf_threshold = 0;
+                bleinfo->shieldDetTime = 0;
+            }
+        }
+        sysparam.shieldDetectVol = atoi(item->item_data[1]);
+        sysparam.shieldDetectTime = atoi(item->item_data[2]);
+
+        paramSaveAll();
+        sprintf(message, "Update new ble param to %.2fv,%d", sysparam.shieldDetectVol / 100.0, sysparam.shieldDetectTime);
+        bleRelaySetAllReq(BLE_EVENT_SET_RF_PARAM | BLE_EVENT_GET_RF_PARAM);
+    }
+}
+
 
 static void doSetBleMacInstruction(ITEM *item, char *message)
 {
@@ -2711,6 +2757,9 @@ static void doinstruction(int16_t cmdid, ITEM *item, insMode_e mode, void *param
         case SETBLEPARAM_INS:
            	doSetBleParamInstruction(item, message);
            	break;
+        case SETBLERFPARAM_INS:
+			doSetBleRfParamInstruction(item, message);
+        	break;
         case SETBLEWARNPARAM_INS:
            	doSetBleWarnParamInstruction(item, message);
            	break;

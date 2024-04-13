@@ -132,6 +132,7 @@ void paramDefaultInit(uint8_t level)
 	sysparam.shieldDetTime  = 60;
 	sysparam.netConnDetTime = 120;
 	sysparam.rfDetType = 0;
+	sysparam.shieldDetectVol = 100;
     paramSaveAll();
     dynamicParamSaveAll();
 }
@@ -164,6 +165,9 @@ void paramInit(void)
 	    sysparam.blePreShieldHoldTime = 1;
 	    /* 快速屏蔽检测方式 */
 	    sysparam.rfDetType = 0;
+	    /* 屏蔽报警 */
+	    sysparam.shieldDetectVol = 100;
+	    sysparam.shieldDetectTime = 30;
 		paramSaveAll();
 		dynamicParamSaveAll();
     }

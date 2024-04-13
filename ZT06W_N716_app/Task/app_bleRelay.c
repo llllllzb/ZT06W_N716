@@ -185,7 +185,8 @@ int8_t bleRelayInsert(uint8_t *addr, uint8_t addrType)
 		                          BLE_EVENT_VERSION       | BLE_EVENT_GET_PRE_PARAM | 
 		                          BLE_EVENT_SET_PRE_PARAM | BLE_EVENT_SET_RTC		|
 		                          BLE_EVENT_CHK_SOCKET    | BLE_EVENT_SET_LOCK_TIME |
-		                          BLE_EVENT_GET_LOCK_TIME);
+		                          BLE_EVENT_GET_LOCK_TIME | BLE_EVENT_SET_RF_PARAM  |
+		                          BLE_EVENT_GET_RF_PARAM);
             }
             return ret;
         }
@@ -229,7 +230,8 @@ int8_t bleRelayInsertIndex(uint8_t index, uint8_t *addr, uint8_t addrType)
 	                              BLE_EVENT_VERSION       | BLE_EVENT_GET_PRE_PARAM | 
 	                              BLE_EVENT_SET_PRE_PARAM | BLE_EVENT_SET_RTC		|
 	                              BLE_EVENT_CHK_SOCKET    | BLE_EVENT_SET_LOCK_TIME |
-	                              BLE_EVENT_GET_LOCK_TIME);
+	                              BLE_EVENT_GET_LOCK_TIME | BLE_EVENT_SET_RF_PARAM  |
+		                          BLE_EVENT_GET_RF_PARAM);
         }
         return ret;
     }
@@ -469,7 +471,7 @@ void bleErrDetector(void)
 			continue;
 		}
         tick = sysinfo.sysTick - bleRelayList[ind].bleInfo.updateTick;
-        LogPrintf(DEBUG_BLE, "Dev(%d) errtick:%d", ind, tick);
+        //LogPrintf(DEBUG_BLE, "Dev(%d) errtick:%d", ind, tick);
         /* 有一个蓝牙断连5分钟便报警 */
         if (tick >= 300)
         {
@@ -722,6 +724,12 @@ void bleRelaySendDataTry(void)
 					bleRelaySendProtocol(devInfo->connHandle, devInfo->charHandle, CMD_CLEAR_FAST_SHIELD_ALARM, param, 1);
 					break;
                	}
+               	if (event & BLE_EVENT_CLR_RF_ALARM)
+				{
+					LogMessage(DEBUG_BLE, "try to clear rf alarm");
+					bleRelaySendProtocol(devInfo->connHandle, devInfo->charHandle, CMD_CLEAR_RF_ALARM, param, 0);
+					break;
+				}
                 if (event & BLE_EVENT_SET_PRE_PARAM)
                 {
                     LogMessage(DEBUG_BLE, "try to set preAlarm param");
@@ -766,6 +774,24 @@ void bleRelaySendDataTry(void)
 					LogMessage(DEBUG_BLE, "try to get lock timer");
                     bleRelaySendProtocol(devInfo->connHandle, devInfo->charHandle, CMD_GET_LOCK_TIME_PARAM, param, 0);
                     bleRelayClearReq(ind, BLE_EVENT_GET_LOCK_TIME);//立即清除事件
+					break;
+				}
+				
+				if (event & BLE_EVENT_SET_RF_PARAM)
+				{
+					LogMessage(DEBUG_BLE, "try to set rf param");
+					param[0] = sysparam.shieldDetectVol;
+                    param[1] = sysparam.shieldDetectTime;
+                    bleRelaySendProtocol(devInfo->connHandle, devInfo->charHandle, CMD_SET_RF_PARAM, param, 2);
+                    bleRelayClearReq(ind, BLE_EVENT_SET_RF_PARAM);//立即清除事件
+					break;
+				}
+				
+				if (event & BLE_EVENT_GET_RF_PARAM)
+				{
+					LogMessage(DEBUG_BLE, "try to get rf param");
+                    bleRelaySendProtocol(devInfo->connHandle, devInfo->charHandle, CMD_GET_RF_PARAM, param, 0);
+                    bleRelayClearReq(ind, BLE_EVENT_GET_RF_PARAM);//立即清除事件
 					break;
 				}
             }
@@ -1022,7 +1048,7 @@ void bleRelayRecvParser(uint16_t connHandle, uint8_t *data, uint8_t len)
                 LogMessage(DEBUG_BLE, "^^oh, 蓝牙屏蔽报警...");
                 if (bleRelayGetReq(ind, BLE_EVENT_CLR_ALARM) == 0)
                 {
-                	alarmRequestSet(ALARM_SHIELD_REQUEST);
+                	alarmRequestSet(ALARM_HIGH_SIGNAL_REQUEST);
                 }
                 else
                 {
@@ -1166,6 +1192,32 @@ void bleRelayRecvParser(uint16_t connHandle, uint8_t *data, uint8_t len)
 				LogPrintf(DEBUG_BLE, "^^BLE==>Dev(%d)clear fast shield alarm success", ind);
 				bleRelayClearReq(ind, BLE_EVENT_CLR_FAST_ALARM);
            		break;
+           	case CMD_SET_RF_PARAM:
+				LogMessage(DEBUG_BLE, "^^BLE==>set shiled param success");
+                bleRelayClearReq(ind, BLE_EVENT_SET_RF_PARAM);
+           		break;
+           	case CMD_GET_RF_PARAM:
+				LogPrintf(DEBUG_BLE, "^^BLE==>get shiled param [%d,%d] success", data[readInd + 4], data[readInd + 5]);
+                bleRelayList[ind].bleInfo.shieldDetectVol = data[readInd + 4];
+                bleRelayList[ind].bleInfo.shieldDetectTime = data[readInd + 5];
+				bleRelayClearReq(ind, BLE_EVENT_GET_RF_PARAM);
+           		break;
+			case CMD_SEND_RF_ALARM:
+				LogPrintf(DEBUG_BLE, "^^BLE==>Dev(%d)shield alarm", ind);
+				if (bleRelayGetReq(ind, BLE_EVENT_CLR_RF_ALARM) == 0)
+				{
+					alarmRequestSet(ALARM_SHIELD_REQUEST);
+				}
+				else
+				{
+					LogMessage(DEBUG_BLE, "重复干扰屏蔽报警");
+				}
+				bleRelaySetReq(ind, BLE_EVENT_CLR_RF_ALARM);
+				break;
+			case CMD_CLEAR_RF_ALARM:
+				LogPrintf(DEBUG_BLE, "^^BLE==>Dev(%d)clear rf alarm success", ind);
+				bleRelayClearReq(ind, BLE_EVENT_CLR_RF_ALARM);
+				break;
         }
         readInd += size + 3;
     }

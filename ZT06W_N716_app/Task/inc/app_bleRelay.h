@@ -44,6 +44,10 @@
 #define CMD_CLEAR_FAST_SHIELD_ALARM			0x23  //清除快速屏蔽报警
 #define CMD_SET_LOCK_TIME_PARAM				0x24  //设置锁车时间参数
 #define CMD_GET_LOCK_TIME_PARAM				0x25  //获取锁车时间参数
+#define CMD_SET_RF_PARAM					0x26  //设置干扰屏蔽参数
+#define CMD_GET_RF_PARAM					0x27  //查询干扰屏蔽参数
+#define CMD_SEND_RF_ALARM					0x28  //发送干扰屏蔽报警
+#define CMD_CLEAR_RF_ALARM					0x29  //清除干扰屏蔽报警
 
 
 #define CMD_SET_TXPOWER             		0xA7  //发射功率控制
@@ -95,6 +99,10 @@
 #define BLE_EVENT_CLR_FAST_ALARM  0x01000000 //清除快速预报警
 #define BLE_EVENT_SET_LOCK_TIME   0x02000000 //设置屏蔽锁车时间
 #define BLE_EVENT_GET_LOCK_TIME	  0x04000000 //读取屏蔽锁车时间
+#define BLE_EVENT_SET_RF_PARAM	  0x08000000 //设置干扰屏蔽参数
+#define BLE_EVENT_GET_RF_PARAM	  0x10000000 //读取干扰屏蔽参数
+#define BLE_EVENT_CLR_RF_ALARM	  0x20000000 //清除干扰屏蔽报警
+
 #define BLE_EVENT_ALL			  0xFFFFFFFF
 
 
@@ -131,6 +139,8 @@ typedef struct
     uint8_t disc_threshold;         //断连阈值
     uint8_t version[25];			//继电器版本
     uint8_t upgradeFlag;			//是否需要升级状态
+    uint8_t shieldDetectVol;		// 屏蔽检测电压
+	uint8_t shieldDetectTime;		// 屏蔽检测时间
 } bleRelayInfo_s;
 
 

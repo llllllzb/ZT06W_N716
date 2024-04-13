@@ -1005,12 +1005,20 @@ void alarmRequestTask(void)
         alarm = 0x17;
         protocolSend(NORMAL_LINK, PROTOCOL_16, &alarm);
     }
-    //ÐÅºÅÆÁ±Î±¨¾¯
+    //ÐÅºÅÖµ¸ß±¨¾¯
+    if (sysinfo.alarmRequest & ALARM_HIGH_SIGNAL_REQUEST)
+    {
+		alarmRequestClear(ALARM_HIGH_SIGNAL_REQUEST);
+		LogMessage(DEBUG_ALL, "alarmUploadRequest==>BLE shield Alarm");
+		alarm = 0x33;
+		protocolSend(NORMAL_LINK, PROTOCOL_16, &alarm);
+    }
+    //¸ÉÈÅÆÁ±Î±¨¾¯
     if (sysinfo.alarmRequest & ALARM_SHIELD_REQUEST)
     {
 		alarmRequestClear(ALARM_SHIELD_REQUEST);
 		LogMessage(DEBUG_ALL, "alarmUploadRequest==>BLE shield Alarm");
-		alarm = 0x33;
+		alarm = 0x39;
 		protocolSend(NORMAL_LINK, PROTOCOL_16, &alarm);
     }
     //À¶ÑÀÔ¤¾¯±¨¾¯
@@ -1462,7 +1470,7 @@ static void motionCheckTask(void)
             gpsRequestClear(GPS_REQ_MOVE);
         }
     }
-	LogPrintf(DEBUG_ALL, "detTick:%d, accdetmode2OffTick:%d", detTick, accdetmode2OffTick);
+	//LogPrintf(DEBUG_ALL, "detTick:%d, accdetmode2OffTick:%d", detTick, accdetmode2OffTick);
 	if (sysparam.rfDetType == 0)
 	{
 	    if (ACC_READ == ACC_STATE_ON)

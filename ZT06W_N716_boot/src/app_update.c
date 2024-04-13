@@ -388,9 +388,18 @@ static void protoclparaseF3(uint8_t *protocol, int size)
             }
             else
             {
-				LogMessage(DEBUG_ALL, "Error update file");
-	            paramSaveUpdateStatus(0);
-	            startTimer(1000, startJumpToApp, 1);
+                /*
+                 *  如果重新登陆获取升级包的时候，
+                 *  升级包改变了不能够随意跳转回APP，
+                 *  要判断是否已经开始写入一部分的升级包了
+                 *  若已经写入过，只能不处理，让设备一直停留在BOOT
+                 */
+                if (uis.rxfileOffset == 0)
+                {
+                    LogMessage(DEBUG_ALL, "Error update file");
+                    paramSaveUpdateStatus(0);
+                    startTimer(1000, startJumpToApp, 1);
+                }
             }
         }
         else

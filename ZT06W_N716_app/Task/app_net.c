@@ -381,6 +381,8 @@ void modulePowerOff(void)
     RSTKEY_HIGH;
     sysinfo.moduleRstFlag = 1;
     socketDelAll();
+    moduleRspSuccess();
+    hbtRspSuccess();
 }
 
 
@@ -398,6 +400,8 @@ void moduleReset(void)
     POWER_OFF;
     startTimer(20, modulePowerOn, 0);
     socketDelAll();
+    moduleRspSuccess();
+    hbtRspSuccess();
 }
 
 /**************************************************
