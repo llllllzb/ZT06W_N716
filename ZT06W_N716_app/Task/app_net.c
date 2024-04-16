@@ -381,8 +381,6 @@ void modulePowerOff(void)
     RSTKEY_HIGH;
     sysinfo.moduleRstFlag = 1;
     socketDelAll();
-    moduleRspSuccess();
-    hbtRspSuccess();
 }
 
 
@@ -400,8 +398,6 @@ void moduleReset(void)
     POWER_OFF;
     startTimer(20, modulePowerOn, 0);
     socketDelAll();
-    moduleRspSuccess();
-    hbtRspSuccess();
 }
 
 /**************************************************
@@ -2656,7 +2652,7 @@ void moduleRecvParser(uint8_t *buf, uint16_t bufsize)
             {
                 moduleState.cpinResponOk = 1;
             }
-            else if (my_getstrindex((char *)dataRestore, "+CPIN: NO SIM", len))
+            else if (my_getstrindex((char *)dataRestore, "+CPIN: NO SIM", len) >= 0) 
             {
 				if (moduleState.fsmtick >= 29)
 				{

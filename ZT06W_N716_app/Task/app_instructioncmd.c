@@ -80,6 +80,7 @@ const instruction_s insCmdTable[] =
     {BLEDEBUG_INS, "BLEDEBUG"},
     {LOCKTIMER_INS, "LOCKTIMER"},
     {RFDETTYPE_INS, "RFDETTYPE"},
+    {ADCCAL_INS, "ADCCAL"},
     {SN_INS, "*"},
 };
 
@@ -660,6 +661,19 @@ void doAPNInstruction(ITEM *item, char *message)
 
 void doUPSInstruction(ITEM *item, char *message)
 {
+	/* 文件正在传输 */
+	if (sysinfo.bleUpgradeOnoff)
+	{
+		strcpy(message, "Device was upgrading");
+		return;
+	}
+	/* 文件正在传输 */
+	if (sysparam.updateStatus)
+	{
+		strcpy(message, "Device was downloading firmware");
+		return;
+	}
+
     if (item->item_cnt >= 3)
     {
         strncpy((char *)bootparam.updateServer, item->item_data[1], 50);
@@ -1969,7 +1983,6 @@ static void doSimPullOutAlmInstrucion(ITEM *item, char *message)
 static void doReadVersionInstruction(ITEM *item, char *message)
 {
 	uint8_t i, cnt;
-	uint8_t ver;
     bleRelayInfo_s *bleinfo;
     cnt = 0;
     bleRelaySetAllReq(BLE_EVENT_VERSION);
@@ -2193,6 +2206,14 @@ static void doBtfListInstruction(ITEM *item, char *message)
 	fileInfo_s *file;
 	uint8_t i;
 	uint8_t num;
+	/* 文件正在下载 */
+	if (sysparam.updateStatus)
+	{
+		sprintf(message, "Download [%s]completed progress: %.1f%%", 
+						  getNewCodeVersion(),
+                          ((float)getRxfileOffset() / getFileTotalSize()) * 100);
+		return;
+	}
 	file = getFileList(&num);
 	fileQueryList();
 	strcpy(message, "Bt firmware list:\r\n");
@@ -2387,12 +2408,12 @@ static void doBtfUpsInstruction(ITEM *item, char *message)
 				j = my_getstrindex(file[ind].fileName, "BR", 2);
 				if (j < 0)
 				{
-					sprintf(message, "Bt firmware is error [%s]", file[ind].fileName);
+					sprintf(message, "BTFUPS error,firmware is error [%s]", file[ind].fileName);
 					return;
 				}
 				if (file[i].fileSize >= 102400)
 				{
-					sprintf(message, "Bt firmware[%s] is too big", file[i].fileName, file[i].fileSize);
+					sprintf(message, "BTFUPS error,firmware[%s] is too big", file[i].fileName, file[i].fileSize);
 					return;
 				}
 				strncpy(sysparam.file.fileName, file[ind].fileName, 20);
@@ -2423,12 +2444,23 @@ static void doBtfUpsInstruction(ITEM *item, char *message)
 			index = atoi(item->item_data[1]);
 			if (sysparam.updateStatus)
 			{
-				strcpy(message, "Device was downloading ota file");
+				strcpy(message, "Device was downloading firmware");
+				return;
+			}
+			bleinfo = bleRelayGeInfo(index);
+			if (bleinfo == NULL)
+			{
+				strcpy(message, "BTFUPS error,can not get this device infomation");
+				return;
+			}
+			if (strlen(bleinfo->version) <= 2)
+			{
+				strcpy(message, "BTFUPS error,can not get device version infomation");
 				return;
 			}
 			if (index >= DEVICE_MAX_CONNECT_COUNT)
 			{
-				strcpy(message, "Dev number is error");
+				strcpy(message, "BTFUPS error,dev number is error");
 				return;
 			}
 			if (getBleOtaStatus() >= 0)
@@ -2440,16 +2472,57 @@ static void doBtfUpsInstruction(ITEM *item, char *message)
 			if (strlen(item->item_data[2]) <= 2 && strlen(item->item_data[2]) > 0)
 			{
 				ind  = atoi(item->item_data[2]);
-				j = my_getstrindex(file[ind].fileName, "BR", 2);
-				if (j < 0)
+				j = my_strstr(file[ind].fileName, "BR", 2);
+				if (j == 0)
 				{
-					sprintf(message, "Bt firmware is error [%s]", file[ind].fileName);
+					sprintf(message, "BTFUPS error,firmware is error [%s]", file[ind].fileName);
 					return;
 				}
 				if (file[i].fileSize >= 102400)
 				{
-					sprintf(message, "Bt firmware[%s] is too big", file[i].fileName, file[i].fileSize);
+					sprintf(message, "BTFUPS error,firmware[%s] is too big", file[i].fileName, file[i].fileSize);
 					return;
+				}
+				//如果是BR06N
+				if (my_strstr(file[ind].fileName, "BR06_CH592", 10))
+				{
+					if (my_strstr(bleinfo->version, "BR06_CH592", strlen(bleinfo->version)) == 0)
+					{
+						sprintf(message, "BTFUPS error,dev version is %s and upgrade firmware is %s", 
+											bleinfo->version, file[ind].fileName);
+						return;
+					}
+					else if (my_strstr(bleinfo->version, file[ind].fileName, strlen(bleinfo->version)))
+					{
+						sprintf(message, "Dev version[%s] is already firmware[%s]", 
+											bleinfo->version, file[ind].fileName);
+						return;
+					}
+				}
+				else
+				{
+					//BR04或者BR06
+					if (my_strstr(file[ind].fileName, "BR06", 4))
+					{
+						if (my_strstr(bleinfo->version, "BR06", strlen(bleinfo->version)) == 0)
+						{
+							sprintf(message, "BTFUPS error,dev version is %s and upgrade firmware is %s", 
+											bleinfo->version, file[ind].fileName);
+						}
+					}
+					else if (my_strstr(file[ind].fileName, "BR04", 4))
+					{
+						if (my_strstr(bleinfo->version, "BR04", strlen(bleinfo->version)) == 0)
+						{
+							sprintf(message, "BTFUPS error,dev version is %s and upgrade firmware is %s", 
+											bleinfo->version, file[ind].fileName);
+						}
+					}
+					else
+					{
+						//一般不会进这里
+						strcpy(message, "BTFUPS unknow error");
+					}
 				}
 				strncpy(sysparam.file.fileName, file[ind].fileName, 20);
 				sysparam.file.fileName[strlen(file[ind].fileName)] = 0;
@@ -2474,7 +2547,7 @@ static void doBtfUpsInstruction(ITEM *item, char *message)
 				}
 				if (num == i)
 				{
-					strcpy(message, "file name is error");
+					strcpy(message, "BTFUPS error,firmware name is error");
 					return;
 				}
 				else
@@ -2482,12 +2555,12 @@ static void doBtfUpsInstruction(ITEM *item, char *message)
 					j = my_getstrindex(file[ind].fileName, "BR", 2);
 					if (j < 0)
 					{
-						sprintf(message, "Bt firmware[%s]is error", file[i].fileName);
+						sprintf(message, "BTFUPS error,firmware[%s]is error", file[i].fileName);
 						return;
 					}
 					if (file[i].fileSize >= 102400)
 					{
-						sprintf(message, "Bt firmware[%s] is too big", file[i].fileName, file[i].fileSize);
+						sprintf(message, "BTFUPS error,firmware[%s] is too big", file[i].fileName, file[i].fileSize);
 						return;
 					}
 					otaRxInfoInit(1, file[i].fileName, file[i].fileSize);
@@ -2655,6 +2728,34 @@ static void doRfDetTypeInstruction(ITEM *item, char *message)
 			strcpy(message + strlen(message), ",and disable the acc wire function");
 	}
 }
+
+void doAdccalInstrucion(ITEM *item, char *message)
+{
+    float vol;
+    uint8_t type;
+    if (item->item_data[1][0] == 0 || item->item_data[1][0] == '?')
+    {
+		sprintf(message, "ADC cal param: %f", sysparam.adccal);
+    }
+    else
+    {
+        vol = atof(item->item_data[1]);
+        type = atoi(item->item_data[2]);
+        if (type == 0)
+        {
+        	float x;
+            x = portGetAdcVol(VCARD_CHANNEL);
+            sysparam.adccal = vol / x;
+        }
+        else
+        {
+            sysparam.adccal = vol;
+        }
+        paramSaveAll();
+		sprintf(message, "Update ADC calibration parameter to %f", sysparam.adccal);
+    }
+}
+
 
 /*--------------------------------------------------------------------------------------*/
 static void doinstruction(int16_t cmdid, ITEM *item, insMode_e mode, void *param)
@@ -2865,6 +2966,9 @@ static void doinstruction(int16_t cmdid, ITEM *item, insMode_e mode, void *param
 		case RFDETTYPE_INS:
 			doRfDetTypeInstruction(item, message);
 			break;
+		case ADCCAL_INS:
+        	doAdccalInstrucion(item, message);
+        	break;
         default:
             if (mode == SMS_MODE)
             {

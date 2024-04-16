@@ -78,6 +78,7 @@ typedef enum{
     BLEDEBUG_INS,
     LOCKTIMER_INS,
     RFDETTYPE_INS,
+    ADCCAL_INS,
 }INSTRUCTIONID;
 
 
