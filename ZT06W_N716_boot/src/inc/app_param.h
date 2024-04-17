@@ -6,6 +6,7 @@
 //目前预留前1K字节给bootloader，所以app从0x400开始
 #define APP_USER_PARAM_ADDR   0x00  //实际是0x00070000+APP_USER_PARAM_ADDR
 #define APP_PARAM_FLAG        0xB0
+#define APP_ALREADY_FLAG      0xAABB//表示app层已经擦除
 
 
 /*存储在EEPROM中的数据*/
@@ -20,6 +21,7 @@ typedef struct
     uint8_t updateServer[50];
     uint8_t codeVersion[50];
     uint16_t updatePort;
+    uint16_t alreadyUpgrade;
 } SYSTEM_FLASH_DEFINE;
 
 

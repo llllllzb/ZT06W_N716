@@ -22,8 +22,10 @@
 #define APP_PARAM_FLAG          0x1A
 #define BOOT_PARAM_FLAG         0xB0
 #define	OTA_PARAM_FLAG			0x21
+#define APP_ALREADY_FLAG        0xAABB //表示app层已经擦除
 
-#define EEPROM_VERSION									"ZT06W_N716_ZKW_V2.1.7"
+
+#define EEPROM_VERSION									"ZT06W_N716_ZKW_V2.1.8"
 
 
 #define JT808_PROTOCOL_TYPE			8
@@ -42,6 +44,7 @@ typedef struct
     uint8_t updateServer[50];
     uint8_t codeVersion[50];
     uint16_t updatePort;
+    uint16_t alreadyUpgrade;
 } bootParam_s;
 
 /*存储在EEPROM中的数据*/

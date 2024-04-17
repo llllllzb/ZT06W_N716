@@ -328,6 +328,8 @@ static void protoclparaseF3(uint8_t *protocol, int size)
     uint16_t index, filecrc, calculatecrc;
     uint32_t rxfileoffset, rxfilelen;
     uint8_t *codedata;
+    uint8_t newflag;
+    int ind;
     cmd = protocol[5];
     if (cmd == 0x01)
     {
@@ -366,12 +368,22 @@ static void protoclparaseF3(uint8_t *protocol, int size)
             }
             strncpy(uis.newCODEVERSION, (char *)&protocol[index], newversionlen);
             uis.newCODEVERSION[newversionlen] = 0;
+            /*
+			 * uis.rxfileOffset==0表示本次上电第一次请求到软件版本
+			 * 把版本记录在uis.rxlastCODEVERSION
+             */
+            if (uis.rxfileOffset == 0)
+            {
+				strncpy(uis.rxlastCODEVERSION, (char *)&protocol[index], newversionlen);
+            	uis.rxlastCODEVERSION[newversionlen] = 0;
+            }
             LogPrintf(DEBUG_ALL, "File %08X,Total size=%d Bytes", uis.file_id, uis.file_totalsize);
             LogPrintf(DEBUG_ALL, "My SN:[%s]", uis.rxsn);
             LogPrintf(DEBUG_ALL, "My Ver:[%s]", uis.rxcurCODEVERSION);
             LogPrintf(DEBUG_ALL, "New Ver:[%s]", uis.newCODEVERSION);
-            int index = my_getstrindex(uis.newCODEVERSION, "ZT06W", 5);
-            if (index >= 0)
+            LogPrintf(DEBUG_ALL, "Last Ver:[%s]", uis.rxlastCODEVERSION);
+            ind = my_getstrindex(uis.newCODEVERSION, "ZT06W", 5);
+            if (ind >= 0)
             {
 	            upgradeFsmChange(NETWORK_DOWNLOAD_DOING);
 	            if (uis.rxfileOffset == 0)
@@ -380,10 +392,26 @@ static void protoclparaseF3(uint8_t *protocol, int size)
 	                 * 代码擦除
 	                 */
 	                flashEarseByFileSize(APPLICATION_ADDRESS, uis.file_totalsize);
+	                sysparam.alreadyUpgrade = APP_ALREADY_FLAG;
+	                paramSaveAll();
 	            }
 	            else
 	            {
-	                LogMessage(DEBUG_ALL, "Update firmware continute");
+	                if (my_strstr(uis.rxlastCODEVERSION, uis.newCODEVERSION, strlen(uis.rxlastCODEVERSION)) == 0)
+	                {
+	                	/*
+		                 * 再次代码擦除
+		                 */
+						LogPrintf(DEBUG_ALL, "Re-erase application,and update firmware again");
+						flashEarseByFileSize(APPLICATION_ADDRESS, uis.file_totalsize);
+						uis.rxfileOffset = 0;
+						strncpy(uis.rxlastCODEVERSION, (char *)&protocol[index], newversionlen);
+						uis.rxlastCODEVERSION[newversionlen] = 0;
+	                }
+	                else
+	                {
+						LogMessage(DEBUG_ALL, "Update firmware continute");
+	                }
 	            }
             }
             else
@@ -393,8 +421,9 @@ static void protoclparaseF3(uint8_t *protocol, int size)
                  *  升级包改变了不能够随意跳转回APP，
                  *  要判断是否已经开始写入一部分的升级包了
                  *  若已经写入过，只能不处理，让设备一直停留在BOOT
+                 *  如果已经擦除了app，设备又重启了，重新请求到错误的软件，就让设备一直待在Boot层
                  */
-                if (uis.rxfileOffset == 0)
+                if (uis.rxfileOffset == 0 && sysparam.alreadyUpgrade != APP_ALREADY_FLAG)
                 {
                     LogMessage(DEBUG_ALL, "Error update file");
                     paramSaveUpdateStatus(0);

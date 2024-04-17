@@ -52,6 +52,7 @@ typedef struct
     char newCODEVERSION[50];
     char rxsn[50];
     char rxcurCODEVERSION[50];
+    char rxlastCODEVERSION[50];
     uint32_t file_id;
     uint32_t file_offset;
     uint32_t file_len;

@@ -807,7 +807,7 @@ void tcpsetupRspParser(uint8_t *buf, uint16_t len)
     relen = len;
 
     index = my_getstrindex(rebuf, "+TCPSETUP:", relen);
-    if (index < 0)
+    if (!(index >= 0 && relen <= 50))
     {
         return;
     }

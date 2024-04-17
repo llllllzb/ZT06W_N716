@@ -695,6 +695,8 @@ void doUPSInstruction(ITEM *item, char *message)
     bootparam.apnpassword[49] = 0;
     strncpy(bootparam.codeVersion, EEPROM_VERSION, 50);
     bootparam.codeVersion[49] = 0;
+    bootparam.alreadyUpgrade = 0;
+	
     bootParamSaveAll();
     startTimer(30, modulePowerOff, 0);
     startTimer(60, portSysReset, 0);
