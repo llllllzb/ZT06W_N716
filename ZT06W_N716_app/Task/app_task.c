@@ -2562,11 +2562,18 @@ static void lightDetectionTask(void)
 {
     static uint32_t darknessTick = 0;
     static uint32_t FrontdarknessTick = 0;
+    static uint32_t lightTick1 = 0;
+    static uint32_t lightTick2 = 0;
+    static uint8_t darkflag1 = 0, darkflag2 = 0;
     uint8_t curLdrState;
     if (dynamicParam.lowPowerFlag == 1)
     {
 		darknessTick = 0;
 		FrontdarknessTick = 0;
+		darkflag1 = 0;
+		darkflag2 = 0;
+		lightTick1 = 0;
+		lightTick2 = 0;
 		return ;
     }
     curLdrState = LDR2_READ;
@@ -2574,19 +2581,27 @@ static void lightDetectionTask(void)
     if (curLdrState == 0)
     {
         //ÁÁ
+        lightTick1++;
         if (darknessTick >= 60)
+        {
+            darkflag1 = 1;
+        }
+        darknessTick = 0;
+        if (darkflag1 && lightTick1 >= 3)
         {
             if (sysparam.ldrEn != 0)
             {
                 LogMessage(DEBUG_ALL, "Light alarm");
                 alarmRequestSet(ALARM_LIGHT_REQUEST);
             }
+            darkflag1 = 0;
         }
-        darknessTick = 0;
     }
     else
     {
         //°µ
+        lightTick1 = 0;
+        darkflag1 = 0;
         darknessTick++;
     }
 
@@ -2596,7 +2611,13 @@ static void lightDetectionTask(void)
     if (curLdrState == 0)
     {
         //ÁÁ
+        lightTick2++;
         if (FrontdarknessTick >= 60)
+        {
+            darkflag2 = 1;
+        }
+        FrontdarknessTick = 0;
+        if (darkflag2 && lightTick2 >= 3)
         {
             if (sysparam.uncapalm != 0)
             {
@@ -2610,12 +2631,14 @@ static void lightDetectionTask(void)
                     LogPrintf(DEBUG_ALL, "uncap==>try to relay on");
                 }
             }
+            darkflag2 = 0;
         }
-        FrontdarknessTick = 0;
     }
     else
     {
         //°µ
+        lightTick2 = 0;
+        darkflag2 = 0;
         FrontdarknessTick++;
     }
 }

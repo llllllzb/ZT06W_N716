@@ -1015,7 +1015,7 @@ static void agpsServerConnTask(void)
 {
     static uint8_t agpsFsm = 0;
     static uint8_t runTick = 0;
-    char agpsBuff[150];
+    char agpsBuff[150] = { 0 };
     uint16_t agpsLen;
     int ret;
     gpsinfo_s *gpsinfo;
