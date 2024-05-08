@@ -25,7 +25,7 @@
 #define APP_ALREADY_FLAG        0xAABB //表示app层已经擦除
 
 
-#define EEPROM_VERSION									"ZT06W_N716_ZKW_V2.1.9"
+#define EEPROM_VERSION									"ZT06W_N716_ZKW_V2.2.0"
 
 
 #define JT808_PROTOCOL_TYPE			8

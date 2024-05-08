@@ -1114,7 +1114,6 @@ static void doRelayInstrucion(ITEM *item, char *message, insMode_e mode, void *p
         {
 			rspTimeOut = startTimer(300, relayOnRspTimeOut, 0);
         }
-        //strcpy(message, "Relay on success");
     }
     else if (item->item_data[1][0] == '0')
     {
@@ -1126,17 +1125,25 @@ static void doRelayInstrucion(ITEM *item, char *message, insMode_e mode, void *p
         bleRelayClearAllReq(BLE_EVENT_SET_DEVON);
         relayAutoClear();
         sysinfo.bleforceCmd = bleDevGetCnt();
-        if (sysparam.relayCloseCmd != 0)
+        if (bleDevGetCnt() == 0)
         {
-			sysparam.relayCloseCmd = 0;
-			paramSaveAll();
-			LogPrintf(DEBUG_ALL, "clear relay close cmd");
+        	strcpy(message, "relayoff success");
+        	alarmRequestSet(ALARM_OIL_RESTORE_REQUEST);
+			sendMsgWithMode((uint8_t *)message, strlen(message), mode, param);
         }
-        if (rspTimeOut == -1)
+        else
         {
-            rspTimeOut = startTimer(300, relayOffRspTimeOut, 0);
+			if (sysparam.relayCloseCmd != 0)
+	        {
+				sysparam.relayCloseCmd = 0;
+				paramSaveAll();
+				LogPrintf(DEBUG_ALL, "clear relay close cmd");
+	        }
+	        if (rspTimeOut == -1)
+	        {
+	            rspTimeOut = startTimer(300, relayOffRspTimeOut, 0);
+	        }
         }
-        //strcpy(message, "Relay off success");
     }
     else
     {

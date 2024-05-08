@@ -2331,6 +2331,11 @@ static void doRelayOn(void)
     bleRelayClearAllReq(BLE_EVENT_SET_DEVOFF);
     bleRelaySetAllReq(BLE_EVENT_SET_DEVON);
     LogMessage(DEBUG_ALL, "do relay on");
+    if (bleDevGetCnt() == 0)
+    {
+		alarmRequestSet(ALARM_OIL_CUTDOWN_REQUEST);
+		instructionRespone("relayon success");
+    }
 }
 
 void relayAutoCtrlTask(void)
@@ -2363,7 +2368,7 @@ void relayAutoCtrlTask(void)
     gpsinfo = getCurrentGPSInfo();
     if (gpsinfo->fixstatus == 0)
     {
-    	instructionRespone("Relay on: No gps");
+    	//instructionRespone("Relay on: No gps");
         return;
     }
     if (gpsinfo->speed > sysparam.relaySpeed)
@@ -2565,6 +2570,7 @@ static void lightDetectionTask(void)
     static uint32_t lightTick1 = 0;
     static uint32_t lightTick2 = 0;
     static uint8_t darkflag1 = 0, darkflag2 = 0;
+    
     uint8_t curLdrState;
     if (dynamicParam.lowPowerFlag == 1)
     {
@@ -2605,6 +2611,8 @@ static void lightDetectionTask(void)
         darknessTick++;
     }
 
+	if (sysinfo.sysTick < 300)
+		return;
     //Ç°¸Ð¹â¼ì²â
     curLdrState = LDR1_READ;
     //LogPrintf(DEBUG_ALL, "uncap:%d tick:%d", curLdrState, FrontdarknessTick);
