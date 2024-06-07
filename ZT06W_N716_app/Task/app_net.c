@@ -2384,7 +2384,7 @@ void fslistParser(uint8_t *buf, uint16_t len)
 		index = getCharIndex(rebuf, relen, ',');
 		if (index < 0)
 			return;
-		if (moduleState.fileNum <= FILE_MAX_CNT)
+		if (moduleState.fileNum < FILE_MAX_CNT)
 		{
 			tmos_memcpy(moduleState.file[moduleState.fileNum].fileName, rebuf, index);
 			moduleState.file[moduleState.fileNum].fileName[index] = 0;
@@ -2812,19 +2812,19 @@ int socketSendData(uint8_t link, uint8_t *data, uint16_t len)
 **************************************************/
 void moduleSleepCtl(uint8_t onoff)
 {
-    char param[5];
-    uint8_t mode=0;
-    if (onoff == 0)
-    {
-        return;
-    }
-    else
-    {
-		mode = 2;
-    }
-    sprintf(param, "%d", mode);
-    sendModuleCmd(AT_CMD, NULL);
-    sendModuleCmd(ENPWRSAVE_CMD, param);
+//    char param[5];
+//    uint8_t mode=0;
+//    if (onoff == 0)
+//    {
+//        return;
+//    }
+//    else
+//    {
+//		mode = 2;
+//    }
+//    sprintf(param, "%d", mode);
+//    sendModuleCmd(AT_CMD, NULL);
+//    sendModuleCmd(ENPWRSAVE_CMD, param);
 }
 
 /**************************************************

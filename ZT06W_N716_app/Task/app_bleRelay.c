@@ -509,7 +509,7 @@ void blePeriodTask(void)
     {
         runTick = 0;
         LogPrintf(DEBUG_BLE, ">>>>>>>>>>>>>>>>>Ble period<<<<<<<<<<<<<<<<");
-        bleRelaySetAllReq(BLE_EVENT_GET_OUTV | BLE_EVENT_GET_RFV | BLE_EVENT_CHK_SOCKET);
+        bleRelaySetAllReq(BLE_EVENT_GET_OUTV | BLE_EVENT_GET_RFV | BLE_EVENT_CHK_SOCKET | BLE_EVENT_GET_RF_THRE);
     }
     bleDiscDetector();
     bleErrDetector();
@@ -999,15 +999,15 @@ void bleRelayRecvParser(uint16_t connHandle, uint8_t *data, uint8_t len)
                 bleRelayClearReq(ind, BLE_EVENT_SET_RF_THRE);
                 break;
             case CMD_GET_VOLTAGE:
-
                 valuef = data[readInd + 4] / 100.0;
                 bleRelayList[ind].bleInfo.rf_threshold = valuef;
-                if (bleRelayList[ind].bleInfo.rf_threshold == 0)
-                {
-					
-                }
                 LogPrintf(DEBUG_BLE, "^^BLE==>get shield voltage range %.2fV", valuef);
                 bleRelayClearReq(ind, BLE_EVENT_GET_RF_THRE);
+                if (data[readInd + 4] != sysparam.bleRfThreshold)
+				{
+					LogPrintf(DEBUG_BLE, "shield voltage is different==>master:%d slavor%d", sysparam.bleRfThreshold, data[readInd + 4]);
+					bleRelaySetReq(ind, BLE_EVENT_SET_RF_THRE);
+				}
                 break;
             case CMD_GET_ADCV:
                 value16 = data[readInd + 4];

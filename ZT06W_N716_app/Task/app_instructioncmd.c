@@ -81,6 +81,7 @@ const instruction_s insCmdTable[] =
     {LOCKTIMER_INS, "LOCKTIMER"},
     {RFDETTYPE_INS, "RFDETTYPE"},
     {ADCCAL_INS, "ADCCAL"},
+    {RELAYTYPE_INS, "RELAYTYPE"},
     {SN_INS, "*"},
 };
 
@@ -1125,7 +1126,7 @@ static void doRelayInstrucion(ITEM *item, char *message, insMode_e mode, void *p
         bleRelayClearAllReq(BLE_EVENT_SET_DEVON);
         relayAutoClear();
         sysinfo.bleforceCmd = bleDevGetCnt();
-        if (bleDevGetCnt() == 0)
+        if (bleDevGetCnt() == 0 && sysparam.relayType == 1)
         {
         	strcpy(message, "relayoff success");
         	alarmRequestSet(ALARM_OIL_RESTORE_REQUEST);
@@ -1345,7 +1346,7 @@ static void doSetBleMacInstruction(ITEM *item, char *message)
     if (item->item_data[1][0] == 0 || item->item_data[1][0] == '?')
     {
         strcpy(message, "BLELIST:");
-        for (i = 0; i < sizeof(sysparam.bleConnMac) / sizeof(sysparam.bleConnMac[0]); i++)
+        for (i = 0; i < sysparam.bleMacCnt; i++)
         {
             byteToHexString(sysparam.bleConnMac[i], (uint8_t *)mac, 6);
             mac[12] = 0;
@@ -1374,6 +1375,11 @@ static void doSetBleMacInstruction(ITEM *item, char *message)
             if (strlen(item->item_data[i]) != 12)
             {
                 continue;
+            }
+            if (strncmp(item->item_data[i], "000000000000", 12) == 0)
+            {
+				LogPrintf(DEBUG_ALL, "filter 00");
+            	continue;
             }
 
             l = 0;
@@ -1409,6 +1415,10 @@ static void doSetBleMacInstruction(ITEM *item, char *message)
             strcpy(message, "Disable the ble function,and the ble mac was clear");
         }
         sysparam.bleMacCnt = ind;
+        if (sysparam.bleMacCnt != 0)
+        {
+			sysparam.relayType = 0;
+        }
         //startTimer(100, setBleMacCallback, 0);
         paramSaveAll();
         if (primaryServerIsReady() && sysparam.protocol != JT808_PROTOCOL_TYPE)
@@ -2738,7 +2748,7 @@ static void doRfDetTypeInstruction(ITEM *item, char *message)
 	}
 }
 
-void doAdccalInstrucion(ITEM *item, char *message)
+static void doAdccalInstrucion(ITEM *item, char *message)
 {
     float vol;
     uint8_t type;
@@ -2765,11 +2775,32 @@ void doAdccalInstrucion(ITEM *item, char *message)
     }
 }
 
+static void doRelayTypeInstruction(ITEM *item, char *message)
+{
+	if (item->item_data[1][0] == 0 || item->item_data[1][0] == '?')
+    {
+		sprintf(message, "Relay type is %s", sysparam.relayType ? "Wire" : "Ble");
+    }
+    else
+    {
+		if (atoi(item->item_data[1]) == 0)
+		{
+			sysparam.relayType = 0;
+		}
+		else
+		{
+			sysparam.relayType = 1;
+		}
+		paramSaveAll();
+		sprintf(message, "Update relay type to %s", sysparam.relayType ? "Wire" : "Ble");
+    }
+}
+
 
 /*--------------------------------------------------------------------------------------*/
 static void doinstruction(int16_t cmdid, ITEM *item, insMode_e mode, void *param)
 {
-    char message[512];
+    char message[512] = { 0 };
     message[0] = 0;
     insParam_s *debugparam;
     switch (cmdid)
@@ -2977,6 +3008,9 @@ static void doinstruction(int16_t cmdid, ITEM *item, insMode_e mode, void *param
 			break;
 		case ADCCAL_INS:
         	doAdccalInstrucion(item, message);
+        	break;
+        case RELAYTYPE_INS:
+			doRelayTypeInstruction(item, message);
         	break;
         default:
             if (mode == SMS_MODE)

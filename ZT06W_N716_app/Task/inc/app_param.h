@@ -21,11 +21,11 @@
 #define APP_DYNAMIC_PARAM_ADDR	0x2400 //实际是0x00070000+APP_DYNAMIC_PARAM_ADDR
 #define APP_PARAM_FLAG          0x1A
 #define BOOT_PARAM_FLAG         0xB0
-#define	OTA_PARAM_FLAG			0x21
+#define	OTA_PARAM_FLAG			0x22
 #define APP_ALREADY_FLAG        0xAABB //表示app层已经擦除
 
 
-#define EEPROM_VERSION									"ZT06W_N716_ZKW_V2.2.0"
+#define EEPROM_VERSION									"ZT06W_N716_ZKW_V2.2.1"
 
 
 #define JT808_PROTOCOL_TYPE			8
@@ -156,6 +156,7 @@ typedef struct
 	uint8_t rfDetType;
 	uint8_t shieldDetectVol;	// 屏蔽检测电压
 	uint8_t shieldDetectTime;	// 屏蔽检测时间
+	uint8_t relayType;			// 1:采用接线继电器
 
 } systemParam_s;
 

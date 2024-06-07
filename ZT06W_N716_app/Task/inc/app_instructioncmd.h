@@ -79,6 +79,7 @@ typedef enum{
     LOCKTIMER_INS,
     RFDETTYPE_INS,
     ADCCAL_INS,
+    RELAYTYPE_INS,
 }INSTRUCTIONID;
 
 

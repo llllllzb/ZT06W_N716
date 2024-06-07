@@ -2331,7 +2331,7 @@ static void doRelayOn(void)
     bleRelayClearAllReq(BLE_EVENT_SET_DEVOFF);
     bleRelaySetAllReq(BLE_EVENT_SET_DEVON);
     LogMessage(DEBUG_ALL, "do relay on");
-    if (bleDevGetCnt() == 0)
+    if (bleDevGetCnt() == 0 && sysparam.relayType == 1)
     {
 		alarmRequestSet(ALARM_OIL_CUTDOWN_REQUEST);
 		instructionRespone("relayon success");
@@ -2368,7 +2368,7 @@ void relayAutoCtrlTask(void)
     gpsinfo = getCurrentGPSInfo();
     if (gpsinfo->fixstatus == 0)
     {
-    	//instructionRespone("Relay on: No gps");
+    	instructionRespone("Relay on: No gps");
         return;
     }
     if (gpsinfo->speed > sysparam.relaySpeed)
