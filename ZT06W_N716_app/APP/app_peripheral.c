@@ -183,6 +183,7 @@ static bStatus_t appReadAttrCB(uint16 connHandle, gattAttribute_t *pAttr,
 
     return ret;
 }
+
 //SN:999913436051195,292,3.77,46
 void bleRecvParser(char *data, uint16_t len)
 {
@@ -232,6 +233,14 @@ void bleRecvParser(char *data, uint16_t len)
 
             bleServerAddInfo(devInfo);
             tmos_start_task(appPeripheralTaskId, APP_UPDATE_MCU_RTC_EVENT, MS1_TO_SYSTEM_TIME(200));
+            if (primaryServerIsReady() == 0)
+            {
+				appPerpheralSendNetStatus(2);
+            }
+            else
+            {
+				tmos_start_task(appPeripheralTaskId, APP_PERIPHERAL_BAT_NET_EVENT, MS1_TO_SYSTEM_TIME(25000));
+			}
         }
     }
 }
@@ -505,6 +514,26 @@ static void sendRtcDateTime(void)
     appSendNotifyData(encrypt, encryptLen);
 }
 
+static uint8_t net_status = 0;
+void sendNetStatus(void)
+{
+    char msg[20];
+    char encrypt[128];
+    uint8_t encryptLen;
+
+    sprintf(msg, "NET,%d", net_status);
+    encryptData(encrypt, &encryptLen, msg, strlen(msg));
+    LogPrintf(DEBUG_ALL, "send datetime:%s", msg);
+    appSendNotifyData(encrypt, encryptLen);
+}
+
+//:1 ÍøÂçÕý³£ :2ÍøÂçÒì³£
+void appPerpheralSendNetStatus(uint8_t net)
+{
+	net_status = net;
+	tmos_start_task(appPeripheralTaskId, APP_PERIPHERAL_NET_STATUS_EVENT, MS1_TO_SYSTEM_TIME(500));
+}
+
 void appLocalNotifyAutoCtl(void)
 {
     uint16 cccd = 0;
@@ -571,15 +600,17 @@ static tmosEvents appPeripheralEventProcess(tmosTaskID taskID, tmosEvents events
         appLocalNotifyAutoCtl();
         return events ^ APP_PERIPHERAL_NOTIFY_EVENT;
     }
-    if (events & APP_START_AUTH_EVENT)
+    if (events & APP_PERIPHERAL_NET_STATUS_EVENT)
     {
-        uint32_t result;
-        result = tmos_rand();
-        LogPrintf(DEBUG_ALL, "rand:%u", result % 0xFF);
-        result = startAuthentication(result % 0xFF, 1, 2, appSendNotifyData);
-        LogPrintf(DEBUG_ALL, "Auth Result:%d", result);
-        return events ^ APP_START_AUTH_EVENT;
+		sendNetStatus();
+        return events ^ APP_PERIPHERAL_NET_STATUS_EVENT;
     }
+    if (events & APP_PERIPHERAL_BAT_NET_EVENT)
+    {
+        appPerpheralSendNetStatus(2);
+        return events ^ APP_PERIPHERAL_BAT_NET_EVENT;
+    }
+    
     return 0;
 }
 /*
@@ -638,6 +669,7 @@ static void appGaproleWaitting(gapRoleEvent_t *pEvent)
     }
     LogPrintf(DEBUG_ALL, "appGaproleWaitting==>opcode:%d",pEvent->gap.opcode);
     tmos_stop_task(appPeripheralTaskId, APP_PERIPHERAL_TERMINATE_EVENT);
+    tmos_stop_task(appPeripheralTaskId, APP_PERIPHERAL_BAT_NET_EVENT);
     if (sysparam.bleen)
     {
         u8Value = TRUE;

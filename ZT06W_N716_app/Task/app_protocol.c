@@ -1379,6 +1379,11 @@ static void protoclparase13(uint8_t link, char *protocol, int size)
         hbtRspSuccess();
         chkNetRspSuccess();
     }
+    else if (link == BLE_LINK)
+    {
+		appPerpheralSendNetStatus(1);
+		tmos_stop_task(appPeripheralTaskId, APP_PERIPHERAL_BAT_NET_EVENT);
+    }
 }
 
 /**************************************************
